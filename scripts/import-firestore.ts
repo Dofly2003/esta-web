@@ -5,7 +5,7 @@
 // Password Firebase tidak bisa dipindahkan. admin@esta.id memakai SEED_PASSWORD dari .env;
 // akun lain mendapat password sementara yang ditulis ke data/initial-passwords.txt.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { db } from "../server/db";
+import { client, ready } from "../server/db";
 import { hashPassword } from "../server/auth";
 import { inquiries, portfolio, projects, settings, tasks, users } from "../server/repo";
 
@@ -15,7 +15,8 @@ if (!existsSync(file)) {
   process.exit(1);
 }
 const force = process.argv.includes("--force");
-if (users.count() > 0 && !force) {
+await ready;
+if ((await users.count()) > 0 && !force) {
   console.error("Database sudah berisi data. Tambahkan --force untuk menghapus dan mengimpor ulang.");
   process.exit(1);
 }
@@ -39,14 +40,14 @@ const people = await Promise.all(
   }),
 );
 
-db.transaction(() => {
+{
   if (force)
-    db.exec(
+    await client.executeMultiple(
       "DELETE FROM tasks; DELETE FROM portfolio; DELETE FROM projects; DELETE FROM inquiries; DELETE FROM sessions; DELETE FROM users; DELETE FROM settings;",
     );
 
   for (const { u, hash } of people) {
-    users.create({
+    await users.create({
       id: u.id,
       name: u.name,
       email: String(u.email).toLowerCase(),
@@ -60,7 +61,7 @@ db.transaction(() => {
   const ref = (id: unknown) => (typeof id === "string" && userIds.has(id) ? id : null);
 
   for (const p of data.projects ?? []) {
-    projects.create({
+    await projects.create({
       id: p.id,
       name: p.name,
       client: p.client ?? "",
@@ -79,7 +80,7 @@ db.transaction(() => {
 
   for (const t of data.tasks ?? []) {
     if (!projectIds.has(t.projectId)) continue;
-    tasks.create({
+    await tasks.create({
       id: t.id,
       title: t.title,
       description: t.description ?? "",
@@ -94,7 +95,7 @@ db.transaction(() => {
   }
 
   for (const p of data.portfolio ?? []) {
-    portfolio.create({
+    await portfolio.create({
       id: p.id,
       slug: p.slug,
       title: p.title,
@@ -117,7 +118,7 @@ db.transaction(() => {
   }
 
   for (const q of data.inquiries ?? []) {
-    inquiries.create({
+    await inquiries.create({
       id: q.id,
       name: q.name,
       email: q.email,
@@ -131,8 +132,8 @@ db.transaction(() => {
   }
 
   const discord = (data.settings ?? []).find((s) => s.id === "discord");
-  if (discord) settings.setDiscord({ webhookUrl: discord.webhookUrl ?? "", enabled: discord.enabled ?? true });
-})();
+  if (discord) await settings.setDiscord({ webhookUrl: discord.webhookUrl ?? "", enabled: discord.enabled ?? true });
+}
 
 if (lines.length) {
   writeFileSync(

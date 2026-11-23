@@ -2,12 +2,13 @@
 //   bun run db:seed            → hanya jika belum ada akun
 //   bun run db:seed --force    → hapus semua data lalu isi ulang
 // Semua akun contoh memakai SEED_PASSWORD dari .env.
-import { db } from "../server/db";
+import { client, ready } from "../server/db";
 import { hashPassword } from "../server/auth";
 import { inquiries, portfolio, projects, tasks, users } from "../server/repo";
 
 const force = process.argv.includes("--force");
-if (users.count() > 0 && !force) {
+await ready;
+if ((await users.count()) > 0 && !force) {
   console.error("Database sudah berisi data. Tambahkan --force untuk menghapus dan mengisi ulang.");
   process.exit(1);
 }
@@ -24,17 +25,22 @@ const day = (offset: number) => {
 };
 const hash = await hashPassword(password);
 
-db.transaction(() => {
+{
   if (force)
-    db.exec(
-      "DELETE FROM tasks; DELETE FROM portfolio; DELETE FROM projects; DELETE FROM inquiries; DELETE FROM sessions; DELETE FROM users;",
+    await client.executeMultiple(
+      "DELETE FROM tasks; DELETE FROM portfolio; DELETE FROM projects; DELETE FROM inquiries; DELETE FROM sessions; DELETE FROM users; DELETE FROM settings;",
     );
 
-  const admin = users.create({ name: "Admin ESTA", email: "admin@esta.id", role: "ADMIN", passwordHash: hash });
-  const rina = users.create({ name: "Rina Designer", email: "rina@esta.id", role: "MEMBER", passwordHash: hash });
-  const budi = users.create({ name: "Budi Developer", email: "budi@esta.id", role: "MEMBER", passwordHash: hash });
+  const admin = await users.create({ name: "Admin ESTA", email: "admin@esta.id", role: "ADMIN", passwordHash: hash });
+  const rina = await users.create({ name: "Rina Designer", email: "rina@esta.id", role: "MEMBER", passwordHash: hash });
+  const budi = await users.create({
+    name: "Budi Developer",
+    email: "budi@esta.id",
+    role: "MEMBER",
+    passwordHash: hash,
+  });
 
-  const p1 = projects.create({
+  const p1 = await projects.create({
     name: "Website Company Profile Nusantara Logistik",
     client: "PT Nusantara Logistik",
     type: "WEBSITE",
@@ -45,7 +51,7 @@ db.transaction(() => {
     dueDate: day(10),
     leadId: budi,
   });
-  const p2 = projects.create({
+  const p2 = await projects.create({
     name: "Aplikasi Kasir Kopi Senja",
     client: "Kopi Senja",
     type: "MOBILE_APP",
@@ -56,17 +62,23 @@ db.transaction(() => {
     dueDate: day(60),
     leadId: admin,
   });
-  const t = (title: string, status: string, priority: string, assigneeId: string, due: number, projectId: string) =>
-    tasks.create({ title, description: "", status, priority, dueDate: day(due), projectId, assigneeId });
-  t("Kumpulkan materi dari klien", "DONE", "HIGH", admin, -15, p1);
-  t("Desain UI halaman Home & About", "DONE", "HIGH", rina, -8, p1);
-  t("Slicing Home ke Astro", "IN_PROGRESS", "MEDIUM", budi, 2, p1);
-  t("Halaman Layanan & Kontak", "TODO", "MEDIUM", budi, 5, p1);
-  t("Review desain mobile dengan klien", "REVIEW", "MEDIUM", rina, -1, p1);
-  t("Workshop kebutuhan dengan owner", "TODO", "HIGH", admin, 4, p2);
+  const t = async (
+    title: string,
+    status: string,
+    priority: string,
+    assigneeId: string,
+    due: number,
+    projectId: string,
+  ) => await tasks.create({ title, description: "", status, priority, dueDate: day(due), projectId, assigneeId });
+  await t("Kumpulkan materi dari klien", "DONE", "HIGH", admin, -15, p1);
+  await t("Desain UI halaman Home & About", "DONE", "HIGH", rina, -8, p1);
+  await t("Slicing Home ke Astro", "IN_PROGRESS", "MEDIUM", budi, 2, p1);
+  await t("Halaman Layanan & Kontak", "TODO", "MEDIUM", budi, 5, p1);
+  await t("Review desain mobile dengan klien", "REVIEW", "MEDIUM", rina, -1, p1);
+  await t("Workshop kebutuhan dengan owner", "TODO", "HIGH", admin, 4, p2);
 
   const base = { imageUrl: null, liveUrl: null, projectId: null, content: "" };
-  portfolio.create({
+  await portfolio.create({
     ...base,
     slug: "batik-laras",
     title: "Batik Laras",
@@ -80,7 +92,7 @@ db.transaction(() => {
     published: true,
     sortOrder: 1,
   });
-  portfolio.create({
+  await portfolio.create({
     ...base,
     slug: "klinik-sehat-hr",
     title: "Klinik Sehat HR",
@@ -94,7 +106,7 @@ db.transaction(() => {
     published: true,
     sortOrder: 2,
   });
-  portfolio.create({
+  await portfolio.create({
     ...base,
     slug: "jalan-sehat-app",
     title: "JalanSehat",
@@ -109,7 +121,7 @@ db.transaction(() => {
     sortOrder: 3,
   });
 
-  inquiries.create({
+  await inquiries.create({
     name: "Sari Wulandari",
     email: "sari@contoh.com",
     company: "CV Maju Bersama",
@@ -117,6 +129,6 @@ db.transaction(() => {
     budget: "Rp10–25 juta",
     message: "Kami butuh website company profile. Bisa jadi dalam 1 bulan?",
   });
-})();
+}
 
 console.log("Seed selesai. Login: admin@esta.id / rina@esta.id / budi@esta.id (password = SEED_PASSWORD di .env)");

@@ -1,31 +1,39 @@
-// Koneksi SQLite (bun:sqlite) + skema. Migrasi sederhana berbasis PRAGMA user_version.
-import { Database } from "bun:sqlite";
+// Koneksi database lewat libSQL:
+// - Lokal  : file SQLite (DATABASE_PATH, default data/esta.sqlite)
+// - Online : Turso (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN) — SQLite di cloud
+import { createClient, type InArgs, type Row } from "@libsql/client";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-const path = resolve(process.env.DATABASE_PATH || "data/esta.sqlite");
-mkdirSync(dirname(path), { recursive: true });
+const remote = process.env.TURSO_DATABASE_URL;
+let url = remote;
+if (!url) {
+  const path = resolve(process.env.DATABASE_PATH || "data/esta.sqlite");
+  mkdirSync(dirname(path), { recursive: true });
+  url = "file:" + path.replace(/\\/g, "/");
+}
 
-export const db = new Database(path, { create: true, strict: true });
-db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
+export const client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN, intMode: "number" });
+export const isRemote = !!remote;
 
 const migrations: string[] = [
   /* 1: skema awal */ `
-  CREATE TABLE users (
+  CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
     email         TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash TEXT NOT NULL,
-    role          TEXT NOT NULL DEFAULT 'MEMBER',      -- ADMIN | MEMBER
+    role          TEXT NOT NULL DEFAULT 'MEMBER',
     discord_id    TEXT NOT NULL DEFAULT '',
     created_at    TEXT NOT NULL
   );
-  CREATE TABLE sessions (
-    id         TEXT PRIMARY KEY,                       -- sha256(token)
-    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  CREATE TABLE IF NOT EXISTS sessions (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
     expires_at TEXT NOT NULL
   );
-  CREATE TABLE projects (
+  CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+  CREATE TABLE IF NOT EXISTS projects (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
     client      TEXT NOT NULL,
@@ -35,25 +43,25 @@ const migrations: string[] = [
     budget      INTEGER,
     start_date  TEXT,
     due_date    TEXT,
-    lead_id     TEXT REFERENCES users(id) ON DELETE SET NULL,
+    lead_id     TEXT,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
   );
-  CREATE TABLE tasks (
+  CREATE TABLE IF NOT EXISTS tasks (
     id          TEXT PRIMARY KEY,
     title       TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     status      TEXT NOT NULL DEFAULT 'TODO',
     priority    TEXT NOT NULL DEFAULT 'MEDIUM',
     due_date    TEXT,
-    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    assignee_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    project_id  TEXT NOT NULL,
+    assignee_id TEXT,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
   );
-  CREATE INDEX tasks_project ON tasks(project_id);
-  CREATE INDEX tasks_assignee ON tasks(assignee_id);
-  CREATE TABLE portfolio (
+  CREATE INDEX IF NOT EXISTS tasks_project ON tasks(project_id);
+  CREATE INDEX IF NOT EXISTS tasks_assignee ON tasks(assignee_id);
+  CREATE TABLE IF NOT EXISTS portfolio (
     id          TEXT PRIMARY KEY,
     slug        TEXT NOT NULL UNIQUE,
     title       TEXT NOT NULL,
@@ -69,11 +77,11 @@ const migrations: string[] = [
     featured    INTEGER NOT NULL DEFAULT 0,
     published   INTEGER NOT NULL DEFAULT 0,
     sort_order  INTEGER NOT NULL DEFAULT 0,
-    project_id  TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    project_id  TEXT,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
   );
-  CREATE TABLE inquiries (
+  CREATE TABLE IF NOT EXISTS inquiries (
     id         TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
     email      TEXT NOT NULL,
@@ -84,18 +92,48 @@ const migrations: string[] = [
     status     TEXT NOT NULL DEFAULT 'NEW',
     created_at TEXT NOT NULL
   );
-  CREATE TABLE settings (
+  CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL                                -- JSON
+    value TEXT NOT NULL
   );`,
 ];
 
-const current = (db.query("PRAGMA user_version").get() as { user_version: number }).user_version;
-for (let v = current; v < migrations.length; v++) {
-  db.transaction(() => {
-    db.exec(migrations[v]!);
-    db.exec(`PRAGMA user_version = ${v + 1}`);
-  })();
+async function migrate() {
+  if (!isRemote) await client.executeMultiple("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
+  await client.execute(
+    "CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)",
+  );
+  const done = (await client.execute("SELECT COALESCE(MAX(version), 0) AS v FROM _migrations")).rows[0]!.v as number;
+  for (let v = done; v < migrations.length; v++) {
+    await client.executeMultiple(migrations[v]!);
+    await client.execute({ sql: "INSERT INTO _migrations (version, applied_at) VALUES (?, ?)", args: [v + 1, now()] });
+  }
+}
+
+/** Selesai saat skema siap. Semua query menunggu ini. */
+export const ready = migrate();
+
+export async function rows(sql: string, args: InArgs = {}): Promise<Row[]> {
+  await ready;
+  return (await client.execute({ sql, args })).rows;
+}
+
+export async function first(sql: string, args: InArgs = {}): Promise<Row | null> {
+  return (await rows(sql, args))[0] ?? null;
+}
+
+export async function run(sql: string, args: InArgs = {}) {
+  await ready;
+  await client.execute({ sql, args });
+}
+
+/** Beberapa perintah tulis sekaligus secara atomik */
+export async function batch(stmts: { sql: string; args?: InArgs }[]) {
+  await ready;
+  await client.batch(
+    stmts.map((s) => ({ sql: s.sql, args: s.args ?? {} })),
+    "write",
+  );
 }
 
 export const now = () => new Date().toISOString();

@@ -20,28 +20,28 @@ function readCookie(req: Request, name: string) {
   return null;
 }
 
-export function currentUser(req: Request): User | null {
+export async function currentUser(req: Request): Promise<User | null> {
   const token = readCookie(req, SESSION_COOKIE);
   return token ? sessions.user(sha256(token)) : null;
 }
 
 /** Buat sesi baru, kembalikan header Set-Cookie */
-export function startSession(userId: string) {
+export async function startSession(userId: string) {
   const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
   const maxAge = SESSION_DAYS * 24 * 60 * 60;
-  sessions.purgeExpired();
-  sessions.create(sha256(token), userId, new Date(Date.now() + maxAge * 1000).toISOString());
+  await sessions.purgeExpired();
+  await sessions.create(sha256(token), userId, new Date(Date.now() + maxAge * 1000).toISOString());
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
 }
 
-export function endSession(req: Request) {
+export async function endSession(req: Request) {
   const token = readCookie(req, SESSION_COOKIE);
-  if (token) sessions.remove(sha256(token));
+  if (token) await sessions.remove(sha256(token));
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? "; Secure" : ""}`;
 }
 
 export async function login(email: string, password: string) {
-  const u = users.byEmail(email.trim().toLowerCase());
+  const u = await users.byEmail(email.trim().toLowerCase());
   if (!u) {
     // tetap hitung hash agar waktu respons tidak membocorkan apakah email terdaftar
     await hashPassword(password);

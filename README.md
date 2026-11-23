@@ -12,7 +12,7 @@
 | Tools    | **Vite+** (`vp check` / `vp lint` / `vp fmt` / `vp test`)                        |
 | Frontend | **Astro** (SSR) — komponen bisa `.astro`, React (`.tsx`), atau tambah Vue/Svelte |
 | Backend  | **Bun vanilla** (`Bun.serve`, router sendiri di `server/api.ts`)                 |
-| Database | **SQLite** (`bun:sqlite`, file `data/esta.sqlite`)                               |
+| Database | **SQLite** via libSQL: file `data/esta.sqlite` (lokal) / **Turso** (online)      |
 
 ```
 server/      backend Bun: main.ts (server), api.ts (semua endpoint /api), repo.ts (SQL), db.ts (skema),
@@ -69,6 +69,14 @@ Dashboard → **Tim & Akun** (admin):
 2. Isi **Discord ID** tiap anggota (Discord → Settings → Advanced → Developer Mode, lalu klik kanan nama → Copy User ID)
    supaya mereka di-mention dan HP-nya berbunyi.
 3. Klik **Kirim pesan uji**.
+
+## Online di Vercel + Turso
+
+- `server.ts` (root) = server produksi `Bun.serve`; Vercel mendeteksinya otomatis (runtime Bun, lihat `vercel.json`).
+- Database online: **Turso** (SQLite di cloud). Kredensial disimpan di `.env.vercel` (tidak di-commit) dan di
+  Environment Variables Vercel: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `SITE_URL`.
+- Isi database online dari ekspor lama: `bun --env-file=.env.vercel scripts/import-firestore.ts`
+- Deploy: `npx vercel deploy --prod`
 
 ## Backup
 

@@ -36,7 +36,7 @@ type Embed = {
 };
 
 async function send(content: string, embed: Embed, mentionIds: string[], webhookOverride?: string) {
-  const cfg = settings.discord();
+  const cfg = await settings.discord();
   const url = webhookOverride ?? cfg.webhookUrl;
   if (!url || (!webhookOverride && !cfg.enabled)) return { ok: false, reason: "off" as const };
   const res = await fetch(`${url}?wait=true`, {

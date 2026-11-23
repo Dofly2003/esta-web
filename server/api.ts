@@ -11,7 +11,7 @@ import {
   ROLES,
   TASK_STATUS,
 } from "../shared/constants";
-import { slugify } from "../shared/format";
+import { slugify, today } from "../shared/format";
 import { currentUser, endSession, hashPassword, login, startSession, verifyPassword } from "./auth";
 import { isWebhookUrl, notifyProjectLead, notifyTaskAssigned, sendTest } from "./discord";
 import { inquiries, portfolio, projects, settings, tasks, users, type ProjectInput } from "./repo";
@@ -46,7 +46,7 @@ function wantsJson(req: Request) {
 
 async function readBody(req: Request): Promise<Fields> {
   const type = req.headers.get("content-type") ?? "";
-  let map = new Map<string, string>();
+  const map = new Map<string, string>();
   if (type.includes("application/json")) {
     const obj = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     for (const [k, v] of Object.entries(obj)) map.set(k, v === true ? "on" : v == null ? "" : String(v));
@@ -59,8 +59,7 @@ async function readBody(req: Request): Promise<Fields> {
 
 /** Halaman tujuan setelah form: field _back, atau Referer (hanya path lokal) */
 function backPath(c: Ctx, f?: Fields, fallback = "/dashboard") {
-  const candidates = [f?.get("_back"), c.req.headers.get("referer")];
-  for (const raw of candidates) {
+  for (const raw of [f?.get("_back"), c.req.headers.get("referer")]) {
     if (!raw) continue;
     try {
       const u = new URL(raw, c.url.origin);
@@ -95,8 +94,8 @@ const oneOf = (map: Record<string, unknown>, v: string, fallback: string) => (v 
 const orNull = (v: string) => v || null;
 const dateOrNull = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 const intOrNull = (v: string) => {
-  const n = v.replace(/[^\d]/g, "");
-  return n ? parseInt(n, 10) : null;
+  const d = v.replace(/[^\d]/g, "");
+  return d ? parseInt(d, 10) : null;
 };
 const safeUrl = (v: string) => (v && /^(https?:\/\/|\/)/.test(v) ? v : null);
 
@@ -110,7 +109,12 @@ function needAdmin(c: Ctx) {
   return u;
 }
 
-/* ============ rate limit login sederhana (memori) ============ */
+/** ID user valid (ada di database) atau null */
+async function validUser(id: string | null) {
+  return id && (await users.get(id)) ? id : null;
+}
+
+/* ============ rate limit login sederhana (memori per instance) ============ */
 const loginFails = new Map<string, { n: number; until: number }>();
 function loginBlocked(ip: string) {
   const e = loginFails.get(ip);
@@ -123,7 +127,7 @@ function loginFailed(ip: string) {
 }
 
 /* ============ notifikasi Discord ============ */
-function announceTask(
+async function announceTask(
   t: {
     id: string;
     title: string;
@@ -137,18 +141,17 @@ function announceTask(
   by: User,
 ) {
   if (!t.assigneeId || t.assigneeId === prevAssignee || t.assigneeId === by.id) return;
-  const assignee = users.get(t.assigneeId);
-  const project = projects.get(t.projectId);
-  if (assignee && project) return notifyTaskAssigned({ task: t, project, assignee, by });
+  const [assignee, project] = await Promise.all([users.get(t.assigneeId), projects.get(t.projectId)]);
+  if (assignee && project) await notifyTaskAssigned({ task: t, project, assignee, by });
 }
-function announceLead(p: ProjectInput & { id: string }, prevLead: string | null, by: User) {
+async function announceLead(p: ProjectInput & { id: string }, prevLead: string | null, by: User) {
   if (!p.leadId || p.leadId === prevLead || p.leadId === by.id) return;
-  const lead = users.get(p.leadId);
-  if (lead) return notifyProjectLead({ project: p, lead, by });
+  const lead = await users.get(p.leadId);
+  if (lead) await notifyProjectLead({ project: p, lead, by });
 }
 
 /* ============ input form ============ */
-function projectInput(f: Fields): ProjectInput {
+async function projectInput(f: Fields): Promise<ProjectInput> {
   const d: ProjectInput = {
     name: f.get("name"),
     client: f.get("client"),
@@ -158,34 +161,34 @@ function projectInput(f: Fields): ProjectInput {
     budget: intOrNull(f.get("budget")),
     startDate: dateOrNull(f.get("startDate")),
     dueDate: dateOrNull(f.get("dueDate")),
-    leadId: orNull(f.get("leadId")),
+    leadId: await validUser(orNull(f.get("leadId"))),
   };
   if (!d.name || !d.client) throw new HttpError(400, "Nama proyek dan klien wajib diisi.");
-  if (d.leadId && !users.get(d.leadId)) d.leadId = null;
   return d;
 }
 
-function taskInput(f: Fields) {
-  const assigneeId = orNull(f.get("assigneeId"));
+async function taskInput(f: Fields) {
   return {
     title: f.get("title"),
     description: f.get("description"),
     status: oneOf(TASK_STATUS, f.get("status"), "TODO"),
     priority: oneOf(PRIORITY, f.get("priority"), "MEDIUM"),
     dueDate: dateOrNull(f.get("dueDate")),
-    assigneeId: assigneeId && users.get(assigneeId) ? assigneeId : null,
+    assigneeId: await validUser(orNull(f.get("assigneeId"))),
   };
 }
 
-function uniqueSlug(base: string, ignoreId?: string) {
+async function uniqueSlug(base: string, ignoreId?: string) {
   const root = slugify(base) || "karya";
   let slug = root;
   for (let i = 2; ; i++) {
-    const found = portfolio.bySlug(slug);
+    const found = await portfolio.bySlug(slug);
     if (!found || found.id === ignoreId) return slug;
     slug = `${root}-${i}`;
   }
 }
+
+const userById = (list: User[]) => (id: string | null) => list.find((u) => u.id === id) ?? null;
 
 /* ================= rute ================= */
 const routes: [method: string, pattern: string, handler: Handler][] = [];
@@ -194,9 +197,8 @@ const on = (method: string, pattern: string, handler: Handler) => routes.push([m
 /* ---------- publik ---------- */
 on("GET", "/api/health", () => json({ ok: true }));
 
-on("GET", "/api/public/home", () => {
-  const published = portfolio.list({ published: true });
-  const all = projects.list();
+on("GET", "/api/public/home", async () => {
+  const [published, all] = await Promise.all([portfolio.list({ published: true }), projects.list()]);
   const clients = new Set([...all.map((p) => p.client), ...published.map((p) => p.client)].filter(Boolean));
   return json({
     featured: published.filter((p) => p.featured).slice(0, 6),
@@ -207,18 +209,15 @@ on("GET", "/api/public/home", () => {
   });
 });
 
-on("GET", "/api/public/portfolio", (c) => {
+on("GET", "/api/public/portfolio", async (c) => {
   const cat = c.url.searchParams.get("kategori");
-  return json(portfolio.list({ published: true }).filter((p) => !cat || p.category === cat));
+  return json((await portfolio.list({ published: true })).filter((p) => !cat || p.category === cat));
 });
 
-on("GET", "/api/public/portfolio/:slug", (c) => {
-  const item = portfolio.bySlug(c.params.slug!);
+on("GET", "/api/public/portfolio/:slug", async (c) => {
+  const item = await portfolio.bySlug(c.params.slug!);
   if (!item || !item.published) throw new HttpError(404, "Karya tidak ditemukan.");
-  const others = portfolio
-    .list({ published: true })
-    .filter((p) => p.id !== item.id)
-    .slice(0, 3);
+  const others = (await portfolio.list({ published: true })).filter((p) => p.id !== item.id).slice(0, 3);
   return json({ item, others });
 });
 
@@ -232,7 +231,7 @@ on("POST", "/api/public/inquiries", async (c) => {
   if (!name || !email || !message) return done(c, { err: "Nama, email, dan pesan wajib diisi.", to });
   if (!/^\S+@\S+\.\S+$/.test(email)) return done(c, { err: "Format email tidak valid.", to });
   if (message.length > 5000) return done(c, { err: "Pesan terlalu panjang.", to });
-  inquiries.create({
+  await inquiries.create({
     name: name.slice(0, 120),
     email: email.slice(0, 200),
     company: f.get("company").slice(0, 120),
@@ -259,122 +258,120 @@ on("POST", "/api/auth/login", async (c) => {
     return done(c, { err: "Email atau password salah.", to: back });
   }
   loginFails.delete(c.ip);
-  return done(c, { to: target, headers: { "Set-Cookie": startSession(user.id) } });
+  return done(c, { to: target, headers: { "Set-Cookie": await startSession(user.id) } });
 });
 
-on("POST", "/api/auth/logout", (c) => done(c, { to: "/login", headers: { "Set-Cookie": endSession(c.req) } }));
+on("POST", "/api/auth/logout", async (c) =>
+  done(c, { to: "/login", headers: { "Set-Cookie": await endSession(c.req) } }),
+);
 
 on("GET", "/api/me", (c) => json(needUser(c)));
 
 /* ---------- ringkasan dashboard ---------- */
-on("GET", "/api/dashboard", (c) => {
+on("GET", "/api/dashboard", async (c) => {
   const me = needUser(c);
-  const allProjects = projects.list();
-  const allTasks = tasks.list();
-  const allUsers = users.list();
+  const [allProjects, allTasks, allUsers, allInquiries] = await Promise.all([
+    projects.list(),
+    tasks.list(),
+    users.list(),
+    inquiries.list(),
+  ]);
+  const byId = userById(allUsers);
   const name = new Map(allProjects.map((p) => [p.id, p.name]));
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = today();
   const open = allTasks.filter((t) => t.status !== "DONE");
+  const newOnes = allInquiries.filter((q) => q.status === "NEW");
   return json({
     active: allProjects
       .filter((p) => ["PLANNING", "IN_PROGRESS", "REVIEW"].includes(p.status))
-      .map((p) => ({
-        ...p,
-        lead: allUsers.find((u) => u.id === p.leadId) ?? null,
-        tasks: allTasks.filter((t) => t.projectId === p.id),
-      }))
+      .map((p) => ({ ...p, lead: byId(p.leadId), tasks: allTasks.filter((t) => t.projectId === p.id) }))
       .sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999")),
     openTasks: open.length,
     overdue: open.filter((t) => t.dueDate && t.dueDate < todayStr).length,
-    newInquiries: inquiries.countNew(),
+    newInquiries: newOnes.length,
     myTasks: open
       .filter((t) => t.assigneeId === me.id)
       .slice(0, 8)
       .map((t) => ({ ...t, projectName: name.get(t.projectId) ?? "—" })),
-    inquiries: inquiries
-      .list()
-      .filter((q) => q.status === "NEW")
-      .slice(0, 4),
+    inquiries: newOnes.slice(0, 4),
   });
 });
 
-on("GET", "/api/nav", (c) => {
+on("GET", "/api/nav", async (c) => {
   needUser(c);
-  return json({ newInquiries: inquiries.countNew() });
+  return json({ newInquiries: await inquiries.countNew() });
 });
 
 /* ---------- proyek ---------- */
-on("GET", "/api/projects", (c) => {
+on("GET", "/api/projects", async (c) => {
   needUser(c);
   const sp = c.url.searchParams;
   const status = sp.get("status") ?? "";
   const type = sp.get("type") ?? "";
   const q = (sp.get("q") ?? "").toLowerCase();
-  const allTasks = tasks.list();
-  const allUsers = users.list();
-  const list = projects
-    .list()
+  const [allProjects, allTasks, allUsers] = await Promise.all([projects.list(), tasks.list(), users.list()]);
+  const byId = userById(allUsers);
+  const list = allProjects
     .filter((p) => (!status || p.status === status) && (!type || p.type === type))
     .filter((p) => !q || p.name.toLowerCase().includes(q) || p.client.toLowerCase().includes(q))
-    .map((p) => ({
-      ...p,
-      lead: allUsers.find((u) => u.id === p.leadId) ?? null,
-      tasks: allTasks.filter((t) => t.projectId === p.id),
-    }));
+    .map((p) => ({ ...p, lead: byId(p.leadId), tasks: allTasks.filter((t) => t.projectId === p.id) }));
   return json({ projects: list, users: allUsers });
 });
 
 on("POST", "/api/projects", async (c) => {
   const me = needUser(c);
-  const f = await c.body();
-  const d = projectInput(f);
-  const id = projects.create(d);
+  const d = await projectInput(await c.body());
+  const id = await projects.create(d);
   await announceLead({ ...d, id }, null, me);
   return done(c, { ok: "Proyek dibuat.", to: `/dashboard/projects/${id}`, data: { id } });
 });
 
-on("GET", "/api/projects/:id", (c) => {
+on("GET", "/api/projects/:id", async (c) => {
   needUser(c);
-  const p = projects.get(c.params.id!);
+  const p = await projects.get(c.params.id!);
   if (!p) throw new HttpError(404, "Proyek tidak ditemukan.");
-  const allUsers = users.list();
-  const byId = (id: string | null) => allUsers.find((u) => u.id === id) ?? null;
+  const [allUsers, projectTasks, linked] = await Promise.all([
+    users.list(),
+    tasks.byProject(p.id),
+    portfolio.byProject(p.id),
+  ]);
+  const byId = userById(allUsers);
   return json({
     project: {
       ...p,
       lead: byId(p.leadId),
-      tasks: tasks.byProject(p.id).map((t) => ({ ...t, assignee: byId(t.assigneeId), projectName: p.name })),
+      tasks: projectTasks.map((t) => ({ ...t, assignee: byId(t.assigneeId), projectName: p.name })),
     },
-    portfolio: portfolio.byProject(p.id),
+    portfolio: linked,
     users: allUsers,
   });
 });
 
 on("POST", "/api/projects/:id", async (c) => {
   const me = needUser(c);
-  const before = projects.get(c.params.id!);
+  const before = await projects.get(c.params.id!);
   if (!before) throw new HttpError(404, "Proyek tidak ditemukan.");
   const f = await c.body();
-  const d = projectInput(f);
-  projects.update(before.id, d);
+  const d = await projectInput(f);
+  await projects.update(before.id, d);
   await announceLead({ ...d, id: before.id }, before.leadId, me);
   return done(c, { ok: "Proyek disimpan.", to: backPath(c, f) });
 });
 
-on("POST", "/api/projects/:id/delete", (c) => {
+on("POST", "/api/projects/:id/delete", async (c) => {
   needUser(c);
-  projects.remove(c.params.id!);
+  await projects.remove(c.params.id!);
   return done(c, { ok: "Proyek dihapus.", to: "/dashboard/projects" });
 });
 
-on("POST", "/api/projects/:id/portfolio", (c) => {
+on("POST", "/api/projects/:id/portfolio", async (c) => {
   needUser(c);
-  const p = projects.get(c.params.id!);
+  const p = await projects.get(c.params.id!);
   if (!p) throw new HttpError(404, "Proyek tidak ditemukan.");
   const type = PROJECT_TYPES[p.type] ?? "Website";
-  const id = portfolio.create({
+  const id = await portfolio.create({
     title: p.name,
-    slug: uniqueSlug(p.name),
+    slug: await uniqueSlug(p.name),
     client: p.client,
     category: type === "UI/UX Design" ? "UI/UX" : PORTFOLIO_CATEGORIES.includes(type) ? type : "Website",
     year: Number((p.dueDate ?? new Date().toISOString()).slice(0, 4)),
@@ -393,21 +390,17 @@ on("POST", "/api/projects/:id/portfolio", (c) => {
 });
 
 /* ---------- tugas ---------- */
-on("GET", "/api/tasks", (c) => {
+on("GET", "/api/tasks", async (c) => {
   const me = needUser(c);
   const all = c.url.searchParams.get("filter") === "all";
   const showDone = c.url.searchParams.get("done") === "1";
-  const allUsers = users.list();
-  const name = new Map(projects.list().map((p) => [p.id, p.name]));
+  const [allTasks, allProjects, allUsers] = await Promise.all([tasks.list(), projects.list(), users.list()]);
+  const byId = userById(allUsers);
+  const name = new Map(allProjects.map((p) => [p.id, p.name]));
   return json({
-    tasks: tasks
-      .list()
+    tasks: allTasks
       .filter((t) => (all || t.assigneeId === me.id) && (showDone || t.status !== "DONE"))
-      .map((t) => ({
-        ...t,
-        assignee: allUsers.find((u) => u.id === t.assigneeId) ?? null,
-        projectName: name.get(t.projectId) ?? "—",
-      })),
+      .map((t) => ({ ...t, assignee: byId(t.assigneeId), projectName: name.get(t.projectId) ?? "—" })),
     users: allUsers,
   });
 });
@@ -416,22 +409,22 @@ on("POST", "/api/tasks", async (c) => {
   const me = needUser(c);
   const f = await c.body();
   const projectId = f.get("projectId");
-  if (!projects.get(projectId)) throw new HttpError(400, "Proyek tidak ditemukan.");
-  const d = taskInput(f);
+  if (!(await projects.get(projectId))) throw new HttpError(400, "Proyek tidak ditemukan.");
+  const d = await taskInput(f);
   if (!d.title) return done(c, { err: "Judul tugas wajib diisi.", to: backPath(c, f) });
-  const id = tasks.create({ ...d, projectId });
+  const id = await tasks.create({ ...d, projectId });
   await announceTask({ ...d, id, projectId }, null, me);
   return done(c, { ok: "Tugas ditambahkan.", to: backPath(c, f), data: { id } });
 });
 
 on("POST", "/api/tasks/:id", async (c) => {
   const me = needUser(c);
-  const before = tasks.get(c.params.id!);
+  const before = await tasks.get(c.params.id!);
   if (!before) throw new HttpError(404, "Tugas tidak ditemukan.");
   const f = await c.body();
-  const d = taskInput(f);
+  const d = await taskInput(f);
   if (!d.title) return done(c, { err: "Judul tugas wajib diisi.", to: backPath(c, f) });
-  tasks.update(before.id, d);
+  await tasks.update(before.id, d);
   await announceTask({ ...d, id: before.id, projectId: before.projectId }, before.assigneeId, me);
   return done(c, { ok: "Tugas disimpan.", to: backPath(c, f) });
 });
@@ -439,28 +432,29 @@ on("POST", "/api/tasks/:id", async (c) => {
 on("POST", "/api/tasks/:id/status", async (c) => {
   needUser(c);
   const f = await c.body();
-  tasks.setStatus(c.params.id!, oneOf(TASK_STATUS, f.get("status"), "TODO"));
+  await tasks.setStatus(c.params.id!, oneOf(TASK_STATUS, f.get("status"), "TODO"));
   return done(c, { to: backPath(c, f) });
 });
 
 on("POST", "/api/tasks/:id/delete", async (c) => {
   needUser(c);
   const f = await c.body();
-  tasks.remove(c.params.id!);
+  await tasks.remove(c.params.id!);
   return done(c, { ok: "Tugas dihapus.", to: backPath(c, f) });
 });
 
-/* ---------- portofolio (admin dashboard) ---------- */
-on("GET", "/api/portfolio", (c) => {
+/* ---------- portofolio (dashboard) ---------- */
+on("GET", "/api/portfolio", async (c) => {
   needUser(c);
-  return json(portfolio.list());
+  return json(await portfolio.list());
 });
 
-on("GET", "/api/portfolio/:id", (c) => {
+on("GET", "/api/portfolio/:id", async (c) => {
   needUser(c);
-  const item = c.params.id === "new" ? null : portfolio.get(c.params.id!);
-  if (c.params.id !== "new" && !item) throw new HttpError(404, "Karya tidak ditemukan.");
-  return json({ item, projects: projects.list().sort((a, b) => a.name.localeCompare(b.name)) });
+  const isNew = c.params.id === "new";
+  const item = isNew ? null : await portfolio.get(c.params.id!);
+  if (!isNew && !item) throw new HttpError(404, "Karya tidak ditemukan.");
+  return json({ item, projects: (await projects.list()).sort((a, b) => a.name.localeCompare(b.name)) });
 });
 
 async function savePortfolio(c: Ctx, id: string | null) {
@@ -471,7 +465,7 @@ async function savePortfolio(c: Ctx, id: string | null) {
   const projectId = orNull(f.get("projectId"));
   const d = {
     title,
-    slug: uniqueSlug(f.get("slug") || title, id ?? undefined),
+    slug: await uniqueSlug(f.get("slug") || title, id ?? undefined),
     client: f.get("client"),
     category: PORTFOLIO_CATEGORIES.includes(f.get("category")) ? f.get("category") : "Website",
     year: intOrNull(f.get("year")) ?? new Date().getFullYear(),
@@ -484,10 +478,10 @@ async function savePortfolio(c: Ctx, id: string | null) {
     featured: f.get("featured") === "on",
     published: f.get("published") === "on",
     sortOrder: intOrNull(f.get("sortOrder")) ?? 0,
-    projectId: projectId && projects.get(projectId) ? projectId : null,
+    projectId: projectId && (await projects.get(projectId)) ? projectId : null,
   };
-  if (id) portfolio.update(id, d);
-  else portfolio.create(d);
+  if (id) await portfolio.update(id, d);
+  else await portfolio.create(d);
   return done(c, { ok: "Karya disimpan.", to: "/dashboard/portfolio" });
 }
 on("POST", "/api/portfolio", (c) => savePortfolio(c, null));
@@ -496,44 +490,45 @@ on("POST", "/api/portfolio/:id", (c) => savePortfolio(c, c.params.id!));
 on("POST", "/api/portfolio/:id/toggle", async (c) => {
   needUser(c);
   const f = await c.body();
-  portfolio.toggle(c.params.id!, f.get("field") === "featured" ? "featured" : "published");
+  await portfolio.toggle(c.params.id!, f.get("field") === "featured" ? "featured" : "published");
   return done(c, { to: backPath(c, f, "/dashboard/portfolio") });
 });
 
-on("POST", "/api/portfolio/:id/delete", (c) => {
+on("POST", "/api/portfolio/:id/delete", async (c) => {
   needUser(c);
-  portfolio.remove(c.params.id!);
+  await portfolio.remove(c.params.id!);
   return done(c, { ok: "Karya dihapus.", to: "/dashboard/portfolio" });
 });
 
 /* ---------- inbox ---------- */
-on("GET", "/api/inquiries", (c) => {
+on("GET", "/api/inquiries", async (c) => {
   needUser(c);
   const status = c.url.searchParams.get("status");
-  return json(inquiries.list().filter((q) => !status || q.status === status));
+  return json((await inquiries.list()).filter((q) => !status || q.status === status));
 });
 
 on("POST", "/api/inquiries/:id/status", async (c) => {
   needUser(c);
   const f = await c.body();
-  inquiries.setStatus(c.params.id!, oneOf(INQUIRY_STATUS, f.get("status"), "NEW"));
+  await inquiries.setStatus(c.params.id!, oneOf(INQUIRY_STATUS, f.get("status"), "NEW"));
   return done(c, { to: backPath(c, f, "/dashboard/inbox") });
 });
 
 on("POST", "/api/inquiries/:id/delete", async (c) => {
   needUser(c);
   const f = await c.body();
-  inquiries.remove(c.params.id!);
+  await inquiries.remove(c.params.id!);
   return done(c, { ok: "Pesan dihapus.", to: backPath(c, f, "/dashboard/inbox") });
 });
 
 /* ---------- tim & akun ---------- */
-on("GET", "/api/team", (c) => {
+on("GET", "/api/team", async (c) => {
   const me = needUser(c);
-  const open = tasks.list().filter((t) => t.status !== "DONE");
+  const [allUsers, allTasks] = await Promise.all([users.list(), tasks.list()]);
+  const open = allTasks.filter((t) => t.status !== "DONE");
   return json({
-    users: users.list().map((u) => ({ ...u, openTasks: open.filter((t) => t.assigneeId === u.id).length })),
-    discord: me.role === "ADMIN" ? settings.discord() : null,
+    users: allUsers.map((u) => ({ ...u, openTasks: open.filter((t) => t.assigneeId === u.id).length })),
+    discord: me.role === "ADMIN" ? await settings.discord() : null,
   });
 });
 
@@ -547,8 +542,8 @@ on("POST", "/api/users", async (c) => {
   if (!name || !/^\S+@\S+\.\S+$/.test(email) || password.length < 8) {
     return done(c, { err: "Lengkapi data. Password minimal 8 karakter.", to });
   }
-  if (users.byEmail(email)) return done(c, { err: "Email sudah terdaftar.", to });
-  users.create({
+  if (await users.byEmail(email)) return done(c, { err: "Email sudah terdaftar.", to });
+  await users.create({
     name,
     email,
     role: oneOf(ROLES, f.get("role"), "MEMBER"),
@@ -557,10 +552,10 @@ on("POST", "/api/users", async (c) => {
   return done(c, { ok: `Akun ${name} berhasil dibuat.`, to });
 });
 
-on("POST", "/api/users/:id/delete", (c) => {
+on("POST", "/api/users/:id/delete", async (c) => {
   const me = needAdmin(c);
   if (c.params.id === me.id) return done(c, { err: "Tidak bisa menghapus akun sendiri.", to: "/dashboard/team" });
-  users.remove(c.params.id!);
+  await users.remove(c.params.id!);
   return done(c, { ok: "Akun dihapus.", to: "/dashboard/team" });
 });
 
@@ -573,7 +568,7 @@ on("POST", "/api/users/:id/discord", async (c) => {
   if (discordId && !/^\d{15,21}$/.test(discordId)) {
     return done(c, { err: "Discord ID berupa 17–20 digit angka (bukan username).", to: "/dashboard/team" });
   }
-  users.setDiscordId(id, discordId);
+  await users.setDiscordId(id, discordId);
   return done(c, { ok: discordId ? "Discord ID disimpan." : "Discord ID dihapus.", to: "/dashboard/team" });
 });
 
@@ -581,10 +576,10 @@ on("POST", "/api/account/password", async (c) => {
   const me = needUser(c);
   const f = await c.body();
   const to = "/dashboard/team";
-  const hash = users.passwordHash(me.id);
+  const hash = await users.passwordHash(me.id);
   if (!hash || !(await verifyPassword(f.get("current"), hash))) return done(c, { err: "Password lama salah.", to });
   if (f.get("next").length < 8) return done(c, { err: "Password baru minimal 8 karakter.", to });
-  users.setPassword(me.id, await hashPassword(f.get("next")));
+  await users.setPassword(me.id, await hashPassword(f.get("next")));
   return done(c, { ok: "Password berhasil diubah.", to });
 });
 
@@ -597,7 +592,7 @@ on("POST", "/api/settings/discord", async (c) => {
   if (webhookUrl && !isWebhookUrl(webhookUrl)) {
     return done(c, { err: "Link webhook tidak valid. Contoh: https://discord.com/api/webhooks/123…/abc…", to });
   }
-  settings.setDiscord({ webhookUrl, enabled: f.get("enabled") === "on" });
+  await settings.setDiscord({ webhookUrl, enabled: f.get("enabled") === "on" });
   return done(c, {
     ok: webhookUrl ? "Pengaturan Discord disimpan." : "Webhook dikosongkan, notifikasi Discord mati.",
     to,
@@ -607,7 +602,7 @@ on("POST", "/api/settings/discord", async (c) => {
 on("POST", "/api/settings/discord/test", async (c) => {
   const me = needAdmin(c);
   const to = "/dashboard/team";
-  const { webhookUrl } = settings.discord();
+  const { webhookUrl } = await settings.discord();
   if (!webhookUrl) return done(c, { err: "Isi dan simpan link webhook dulu.", to });
   try {
     await sendTest(webhookUrl, me);
@@ -644,15 +639,17 @@ function sameOrigin(req: Request) {
 
 export async function handleApi(req: Request, ip = "unknown"): Promise<Response> {
   const url = new URL(req.url);
-  const c: Ctx = { req, url, params: {}, user: currentUser(req), ip, body: () => readBody(req) };
+  const c: Ctx = { req, url, params: {}, user: null, ip, body: () => readBody(req) };
   try {
-    if (req.method !== "GET" && req.method !== "HEAD" && !sameOrigin(req))
+    if (req.method !== "GET" && req.method !== "HEAD" && !sameOrigin(req)) {
       throw new HttpError(403, "Origin tidak diizinkan.");
+    }
     for (const [method, pattern, handler] of routes) {
       if (method !== req.method && !(method === "GET" && req.method === "HEAD")) continue;
       const params = match(pattern, url.pathname);
       if (!params) continue;
       c.params = params;
+      c.user = await currentUser(req);
       return await handler(c);
     }
     throw new HttpError(404, "Endpoint tidak ditemukan.");
