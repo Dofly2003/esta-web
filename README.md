@@ -76,7 +76,8 @@ Dashboard → **Tim & Akun** (admin):
 - Database online: **Turso** (SQLite di cloud). Kredensial disimpan di `.env.vercel` (tidak di-commit) dan di
   Environment Variables Vercel: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `SITE_URL`.
 - Isi database online dari ekspor lama: `bun --env-file=.env.vercel scripts/import-firestore.ts`
-- Deploy: `npx vercel deploy --prod`
+- Live: **https://esta-web-fawn.vercel.app** (akun Vercel dofly2003, terhubung ke GitHub)
+- Deploy: otomatis setiap push ke `main`; branch lain mendapat link preview sendiri
 
 ## Backup
 
