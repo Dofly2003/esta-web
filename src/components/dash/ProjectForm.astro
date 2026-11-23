@@ -1,0 +1,62 @@
+---
+import { PROJECT_STATUS, PROJECT_TYPES } from "@shared/constants";
+import type { Project, User } from "@shared/types";
+
+interface Props {
+  action: string;
+  users: User[];
+  project?: Project;
+  submitLabel: string;
+}
+const { action, users, project, submitLabel } = Astro.props;
+---
+
+<form method="post" action={action} class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  <input type="hidden" name="_back" value={Astro.url.pathname} />
+  <div class="sm:col-span-2">
+    <label class="label">Nama proyek *</label>
+    <input name="name" required value={project?.name} class="input" placeholder="Website PT Maju Jaya" />
+  </div>
+  <div class="sm:col-span-2">
+    <label class="label">Klien *</label>
+    <input name="client" required value={project?.client} class="input" placeholder="PT Maju Jaya" />
+  </div>
+  <div>
+    <label class="label">Jenis</label>
+    <select name="type" class="input">
+      {Object.entries(PROJECT_TYPES).map(([k, v]) => <option value={k} selected={(project?.type ?? "WEBSITE") === k}>{v}</option>)}
+    </select>
+  </div>
+  <div>
+    <label class="label">Status</label>
+    <select name="status" class="input">
+      {Object.entries(PROJECT_STATUS).map(([k, v]) => <option value={k} selected={(project?.status ?? "PLANNING") === k}>{v.label}</option>)}
+    </select>
+  </div>
+  <div>
+    <label class="label">Penanggung jawab (PJ)</label>
+    <select name="leadId" class="input">
+      <option value="">—</option>
+      {users.map((u) => <option value={u.id} selected={project?.leadId === u.id}>{u.name}</option>)}
+    </select>
+  </div>
+  <div>
+    <label class="label">Nilai proyek (Rp)</label>
+    <input name="budget" inputmode="numeric" value={project?.budget ?? ""} class="input" placeholder="15000000" />
+  </div>
+  <div>
+    <label class="label">Mulai</label>
+    <input name="startDate" type="date" value={project?.startDate ?? ""} class="input" />
+  </div>
+  <div>
+    <label class="label">Deadline</label>
+    <input name="dueDate" type="date" value={project?.dueDate ?? ""} class="input" />
+  </div>
+  <div class="sm:col-span-2 lg:col-span-4">
+    <label class="label">Deskripsi / scope</label>
+    <textarea name="description" rows="3" class="input">{project?.description}</textarea>
+  </div>
+  <div class="sm:col-span-2 lg:col-span-4">
+    <button type="submit" class="btn-primary">{submitLabel}</button>
+  </div>
+</form>

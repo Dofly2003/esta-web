@@ -1,0 +1,19 @@
+---
+import { initials } from "@shared/format";
+
+interface Props {
+  name?: string | null;
+  size?: string;
+}
+const { name, size = "h-6 w-6" } = Astro.props;
+---
+
+{
+  name ? (
+    <span title={name} class={`${size} grid shrink-0 place-items-center rounded-full bg-accent/10 text-[10px] font-bold text-accent`}>
+      {initials(name)}
+    </span>
+  ) : (
+    <span class={`${size} grid place-items-center rounded-full border border-dashed border-zinc-300 text-[10px] text-zinc-400`}>?</span>
+  )
+}

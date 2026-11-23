@@ -1,0 +1,127 @@
+---
+import Dash from "../../layouts/Dash.astro";
+import PageHeader from "../../components/dash/PageHeader.astro";
+import Badge from "../../components/dash/Badge.astro";
+import Progress from "../../components/dash/Progress.astro";
+import { api } from "../../lib/api";
+import { PRIORITY, PROJECT_STATUS, PROJECT_TYPES } from "@shared/constants";
+import { fmtDate, isOverdue, progress } from "@shared/format";
+import type { Inquiry, Project, Task } from "@shared/types";
+
+const user = Astro.locals.user!;
+const d = await api<{
+  active: (Project & { tasks: Task[] })[];
+  openTasks: number;
+  overdue: number;
+  newInquiries: number;
+  myTasks: (Task & { projectName: string })[];
+  inquiries: Inquiry[];
+}>(Astro, "/api/dashboard");
+
+const stats = [
+  { label: "Proyek aktif", value: d.active.length, href: "/dashboard/projects" },
+  { label: "Tugas terbuka", value: d.openTasks, href: "/dashboard/tasks?filter=all" },
+  { label: "Tugas lewat deadline", value: d.overdue, href: "/dashboard/tasks?filter=all", warn: d.overdue > 0 },
+  { label: "Inquiry baru", value: d.newInquiries, href: "/dashboard/inbox" },
+];
+---
+
+<Dash title="Dashboard">
+  <PageHeader title={`Halo, ${user.name.split(" ")[0]} 👋`} subtitle="Ringkasan pekerjaan tim hari ini.">
+    <a href="/dashboard/projects?new=1" class="btn-primary">+ Proyek baru</a>
+  </PageHeader>
+
+  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    {
+      stats.map((s) => (
+        <a href={s.href} class="card p-5 transition hover:border-accent/50">
+          <p class="text-xs text-zinc-500">{s.label}</p>
+          <p class:list={["mt-2 text-3xl font-extrabold", s.warn && "text-rose-600"]}>{s.value}</p>
+        </a>
+      ))
+    }
+  </div>
+
+  <div class="mt-8 grid gap-6 xl:grid-cols-3">
+    <section class="card p-5 xl:col-span-2">
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="font-bold">Proyek berjalan</h2>
+        <a href="/dashboard/projects" class="text-xs text-accent">Semua →</a>
+      </div>
+      {
+        d.active.length === 0 ? (
+          <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">Tidak ada proyek aktif.</p>
+        ) : (
+          <ul class="divide-y divide-zinc-100">
+            {d.active.map((p) => (
+              <li>
+                <a href={`/dashboard/projects/${p.id}`} class="grid gap-2 py-3 sm:grid-cols-[1fr_120px_160px] sm:items-center sm:gap-4">
+                  <div class="min-w-0">
+                    <p class="truncate font-semibold">{p.name}</p>
+                    <p class="text-xs text-zinc-500">
+                      {p.client} · {PROJECT_TYPES[p.type]} · Deadline{" "}
+                      <span class:list={[isOverdue(p.dueDate) && "font-semibold text-rose-600"]}>{fmtDate(p.dueDate)}</span>
+                    </p>
+                  </div>
+                  <Badge opt={PROJECT_STATUS[p.status]} />
+                  <Progress value={progress(p.tasks)} />
+                </a>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </section>
+
+    <div class="space-y-6">
+      <section class="card p-5">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="font-bold">Tugas saya</h2>
+          <a href="/dashboard/tasks" class="text-xs text-accent">Semua →</a>
+        </div>
+        {
+          d.myTasks.length === 0 ? (
+            <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">Tidak ada tugas untuk Anda. 🎉</p>
+          ) : (
+            <ul class="space-y-3">
+              {d.myTasks.map((t) => (
+                <li>
+                  <a href={`/dashboard/projects/${t.projectId}`} class="block rounded-lg hover:bg-zinc-50">
+                    <div class="flex items-start justify-between gap-2">
+                      <p class="text-sm font-medium">{t.title}</p>
+                      <Badge opt={PRIORITY[t.priority]} />
+                    </div>
+                    <p class="text-xs text-zinc-500">
+                      {t.projectName} · <span class:list={[isOverdue(t.dueDate) && "font-semibold text-rose-600"]}>{fmtDate(t.dueDate)}</span>
+                    </p>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      </section>
+
+      <section class="card p-5">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="font-bold">Inquiry baru</h2>
+          <a href="/dashboard/inbox" class="text-xs text-accent">Inbox →</a>
+        </div>
+        {
+          d.inquiries.length === 0 ? (
+            <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">Belum ada pesan baru.</p>
+          ) : (
+            <ul class="space-y-3">
+              {d.inquiries.map((q) => (
+                <li class="text-sm">
+                  <p class="font-medium">{q.name} {q.company && <span class="text-zinc-500">· {q.company}</span>}</p>
+                  <p class="line-clamp-1 text-xs text-zinc-500">{q.message}</p>
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      </section>
+    </div>
+  </div>
+</Dash>

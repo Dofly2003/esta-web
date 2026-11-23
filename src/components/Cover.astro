@@ -1,0 +1,22 @@
+---
+import type { PortfolioItem } from "@shared/types";
+
+interface Props {
+  item: PortfolioItem;
+  class?: string;
+}
+const { item, class: className = "" } = Astro.props;
+const bg = `radial-gradient(120% 90% at 85% 10%, ${item.coverColor}cc 0%, transparent 55%), linear-gradient(135deg, ${item.coverColor} 0%, #0b0d12 110%)`;
+---
+
+{
+  item.imageUrl ? (
+    <img src={item.imageUrl} alt={item.title} loading="lazy" class={`h-full w-full object-cover ${className}`} />
+  ) : (
+    <div class={`relative flex h-full w-full items-end overflow-hidden p-6 ${className}`} style={{ background: bg }}>
+      <div class="absolute -right-10 -top-10 h-48 w-48 rounded-full border border-white/20" />
+      <div class="absolute right-10 top-16 h-24 w-24 rotate-12 rounded-2xl border border-white/20" />
+      <span class="text-3xl font-extrabold tracking-tight text-white/90">{item.title}</span>
+    </div>
+  )
+}

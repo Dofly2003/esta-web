@@ -1,0 +1,41 @@
+---
+import Base from "../layouts/Base.astro";
+import Logo from "../components/Logo.astro";
+import { api } from "../lib/api";
+
+// Sudah login → langsung ke dashboard
+try {
+  await api(Astro, "/api/me");
+  return Astro.redirect("/dashboard");
+} catch {}
+
+const next = Astro.url.searchParams.get("next") ?? "/dashboard";
+const err = Astro.url.searchParams.get("err");
+---
+
+<Base title="Login Tim">
+  <div class="relative grid min-h-screen place-items-center overflow-hidden bg-ink px-4">
+    <div class="pointer-events-none absolute -top-40 left-1/2 h-[480px] w-[720px] -translate-x-1/2 rounded-full bg-accent/25 blur-[120px]"></div>
+    <div class="relative w-full max-w-sm">
+      <div class="mb-8 flex justify-center"><Logo /></div>
+      <div class="rounded-2xl border border-white/10 bg-ink-2 p-6 shadow-2xl">
+        <h1 class="text-lg font-bold text-white">Masuk ke Dashboard</h1>
+        <p class="mb-6 mt-1 text-sm text-white/50">Tracking proyek, tugas, dan portofolio.</p>
+        <form method="post" action="/api/auth/login" class="space-y-4">
+          <input type="hidden" name="next" value={next} />
+          <div>
+            <label class="mb-1.5 block text-sm text-white/70" for="email">Email</label>
+            <input id="email" name="email" type="email" required autocomplete="email" class="input-dark" />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-sm text-white/70" for="password">Password</label>
+            <input id="password" name="password" type="password" required autocomplete="current-password" class="input-dark" />
+          </div>
+          {err && <p class="text-sm text-rose-400">{err}</p>}
+          <button type="submit" class="btn-primary w-full rounded-xl py-3">Masuk</button>
+        </form>
+      </div>
+      <p class="mt-6 text-center text-xs text-white/40"><a href="/" class="hover:text-white">← Kembali ke website</a></p>
+    </div>
+  </div>
+</Base>

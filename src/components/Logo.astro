@@ -1,0 +1,16 @@
+---
+interface Props {
+  href?: string;
+  size?: "sm" | "md";
+  dark?: boolean;
+}
+const { href = "/", size = "md", dark = true } = Astro.props;
+const box = size === "sm" ? "h-8 w-8 rounded-lg text-sm" : "h-9 w-9 rounded-xl text-lg";
+---
+
+<a href={href} class:list={["flex items-center gap-2", dark ? "text-white" : "text-zinc-900"]}>
+  <span class:list={["grid place-items-center bg-gradient-to-br from-accent to-accent-2 font-black text-white", box]}>
+    E
+  </span>
+  <span class:list={["font-extrabold", size === "sm" ? "tracking-[0.18em]" : "text-lg tracking-[0.2em]"]}>ESTA</span>
+</a>

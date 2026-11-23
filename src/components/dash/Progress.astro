@@ -1,0 +1,13 @@
+---
+interface Props {
+  value: number;
+}
+const { value } = Astro.props;
+---
+
+<div class="flex items-center gap-2">
+  <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-200">
+    <div class:list={["h-full rounded-full", value === 100 ? "bg-emerald-500" : "bg-accent"]} style={{ width: `${value}%` }}></div>
+  </div>
+  <span class="w-9 text-right text-xs tabular-nums text-zinc-500">{value}%</span>
+</div>

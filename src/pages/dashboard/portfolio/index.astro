@@ -1,0 +1,57 @@
+---
+import Dash from "../../../layouts/Dash.astro";
+import PageHeader from "../../../components/dash/PageHeader.astro";
+import { api } from "../../../lib/api";
+import type { PortfolioItem } from "@shared/types";
+
+const items = await api<PortfolioItem[]>(Astro, "/api/portfolio");
+const toggleCls = (on: boolean) =>
+  `badge border ${on ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-white text-zinc-400"}`;
+---
+
+<Dash title="Portofolio">
+  <PageHeader title="Portofolio" subtitle="Karya yang tampil di website utama. Atur publikasi dan karya unggulan di Beranda.">
+    <a href="/portfolio" target="_blank" class="btn-ghost">Lihat di web ↗</a>
+    <a href="/dashboard/portfolio/new" class="btn-primary">+ Tambah karya</a>
+  </PageHeader>
+
+  {
+    items.length === 0 ? (
+      <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">Belum ada karya.</p>
+    ) : (
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {items.map((item) => (
+          <div class="card overflow-hidden">
+            <a href={`/dashboard/portfolio/${item.id}`} class="block aspect-[16/9] overflow-hidden">
+              {item.imageUrl ? (
+                <img src={item.imageUrl} alt="" class="h-full w-full object-cover" loading="lazy" />
+              ) : (
+                <div class="flex h-full items-end p-4 text-lg font-extrabold text-white" style={{ background: `linear-gradient(135deg, ${item.coverColor}, #0b0d12)` }}>
+                  {item.title}
+                </div>
+              )}
+            </a>
+            <div class="p-4">
+              <a href={`/dashboard/portfolio/${item.id}`} class="font-semibold hover:text-accent">{item.title}</a>
+              <p class="text-xs text-zinc-500">{item.client} · {item.category} · {item.year}</p>
+              <div class="mt-3 flex gap-2">
+                {(["published", "featured"] as const).map((field) => {
+                  const on = item[field];
+                  return (
+                    <form method="post" action={`/api/portfolio/${item.id}/toggle`}>
+                      <input type="hidden" name="field" value={field} />
+                      <input type="hidden" name="_back" value="/dashboard/portfolio" />
+                      <button class={toggleCls(on)} title={`Klik untuk ${on ? "matikan" : "aktifkan"}`}>
+                        {on ? "✓ " : ""}{field === "published" ? "Tayang" : "Unggulan"}
+                      </button>
+                    </form>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+</Dash>

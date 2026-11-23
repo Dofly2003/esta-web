@@ -1,9 +1,0 @@
-.env
-.env.*
-!.env.example
-service-account*.json
-*firebase-adminsdk*.json
-.emulator-data
-*-debug.log
-.next
-node_modules

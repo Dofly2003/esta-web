@@ -1,18 +1,20 @@
+# dependensi & build
 node_modules
-.next
-out
-.env
-service-account*.json
-.emulator-data
-firebase-debug.log
-firestore-debug.log
-ui-debug.log
-next-env.d.ts
+dist/
+.astro/
 *.tsbuildinfo
-*firebase-adminsdk*.json
 
-.vercel
+# rahasia & data lokal (database SQLite, ekspor, password sementara)
+.env
 .env*
 !.env.example
+data/
+*.sqlite
+*.sqlite-*
+service-account*.json
+*firebase-adminsdk*.json
+
+# lain-lain
 .claude/
+.vercel
 *.log

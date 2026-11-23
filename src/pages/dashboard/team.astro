@@ -1,0 +1,131 @@
+---
+import Dash from "../../layouts/Dash.astro";
+import PageHeader from "../../components/dash/PageHeader.astro";
+import Avatar from "../../components/dash/Avatar.astro";
+import { confirmAttr } from "../../components/dash/ui";
+import { api } from "../../lib/api";
+import { ROLES } from "@shared/constants";
+import type { DiscordSettings, User } from "@shared/types";
+
+const me = Astro.locals.user!;
+const isAdmin = me.role === "ADMIN";
+const { users, discord } = await api<{ users: (User & { openTasks: number })[]; discord: DiscordSettings | null }>(
+  Astro,
+  "/api/team",
+);
+---
+
+<Dash title="Tim & Akun">
+  <PageHeader title="Tim & Akun" subtitle="Anggota tim yang bisa login ke dashboard.">
+    <form method="post" action="/api/auth/logout"><button class="btn-ghost">Keluar</button></form>
+  </PageHeader>
+
+  <div class="grid gap-6 xl:grid-cols-3">
+    <section class="card overflow-hidden xl:col-span-2">
+      <ul class="divide-y divide-zinc-100">
+        {
+          users.map((u) => (
+            <li class="flex flex-wrap items-center gap-3 p-4">
+              <Avatar name={u.name} size="h-10 w-10" />
+              <div class="min-w-0 flex-1">
+                <p class="font-semibold">
+                  {u.name} {u.id === me.id && <span class="text-xs font-normal text-zinc-400">(Anda)</span>}
+                </p>
+                <p class="truncate text-xs text-zinc-500">{u.email}</p>
+              </div>
+              <span class="badge bg-zinc-100 text-zinc-600">{ROLES[u.role]}</span>
+              <span class="text-xs text-zinc-500">{u.openTasks} tugas terbuka</span>
+              {isAdmin && u.id !== me.id && (
+                <form method="post" action={`/api/users/${u.id}/delete`}>
+                  <button class="btn-danger px-2 py-1 text-xs" {...confirmAttr(`Hapus akun ${u.name}?`)}>Hapus</button>
+                </form>
+              )}
+              {(isAdmin || u.id === me.id) && (
+                <form method="post" action={`/api/users/${u.id}/discord`} class="flex w-full flex-wrap items-center gap-2">
+                  <span class:list={["badge", u.discordId ? "bg-indigo-50 text-indigo-700" : "bg-zinc-100 text-zinc-500"]}>
+                    {u.discordId ? "Discord ✓" : "Discord —"}
+                  </span>
+                  <input
+                    name="discordId"
+                    value={u.discordId}
+                    inputmode="numeric"
+                    placeholder="Discord ID (angka), mis. 123456789012345678"
+                    aria-label={`Discord ID ${u.name}`}
+                    class="input h-8 max-w-64 flex-1 py-1 text-xs"
+                  />
+                  <button class="btn-ghost h-8 px-3 py-1 text-xs">Simpan</button>
+                </form>
+              )}
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+
+    <div class="space-y-6">
+      {
+        isAdmin && discord && (
+          <section class="card p-5">
+            <h2 class="font-bold">🔔 Notifikasi Discord</h2>
+            <p class="mb-4 mt-1 text-xs text-zinc-500">
+              Bot mengirim pesan ke channel Discord saat tugas diberikan ke seseorang atau saat seseorang dijadikan PJ proyek.
+            </p>
+            <form method="post" action="/api/settings/discord" class="space-y-3">
+              <div>
+                <label class="label">Link webhook channel Discord</label>
+                <input name="webhookUrl" type="url" value={discord.webhookUrl} placeholder="https://discord.com/api/webhooks/…" class="input" autocomplete="off" />
+              </div>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="enabled" checked={discord.enabled} /> Kirim notifikasi otomatis
+              </label>
+              <button class="btn-primary">Simpan</button>
+            </form>
+            <form method="post" action="/api/settings/discord/test" class="mt-3">
+              <button class="btn-ghost w-full">Kirim pesan uji</button>
+            </form>
+            <details class="mt-4 rounded-lg bg-zinc-50 p-3 text-xs text-zinc-600">
+              <summary class="font-semibold text-zinc-700">Cara membuat link webhook</summary>
+              <ol class="mt-2 list-decimal space-y-1 pl-4">
+                <li>Di Discord, klik kanan channel (misal #tugas) → <b>Edit Channel</b>.</li>
+                <li><b>Integrations</b> → <b>Webhooks</b> → <b>New Webhook</b>.</li>
+                <li>Klik webhook-nya → <b>Copy Webhook URL</b>, tempel di atas, lalu <b>Simpan</b>.</li>
+              </ol>
+            </details>
+            <details class="mt-2 rounded-lg bg-zinc-50 p-3 text-xs text-zinc-600">
+              <summary class="font-semibold text-zinc-700">Supaya orangnya di-mention (HP berbunyi)</summary>
+              <ol class="mt-2 list-decimal space-y-1 pl-4">
+                <li>Discord → <b>User Settings</b> → <b>Advanced</b> → aktifkan <b>Developer Mode</b>.</li>
+                <li>Klik kanan nama orangnya → <b>Copy User ID</b> (angka 17–20 digit).</li>
+                <li>Tempel di kolom "Discord ID" anggota tersebut di daftar sebelah.</li>
+              </ol>
+            </details>
+          </section>
+        )
+      }
+      {
+        isAdmin && (
+          <section class="card p-5">
+            <h2 class="mb-4 font-bold">Tambah anggota</h2>
+            <form method="post" action="/api/users" class="space-y-3">
+              <input name="name" required placeholder="Nama" class="input" />
+              <input name="email" type="email" required placeholder="Email" class="input" />
+              <input name="password" type="password" required minlength="8" placeholder="Password awal (min. 8)" class="input" autocomplete="new-password" />
+              <select name="role" class="input">
+                {Object.entries(ROLES).map(([k, v]) => <option value={k} selected={k === "MEMBER"}>{v}</option>)}
+              </select>
+              <button class="btn-primary">Tambah akun</button>
+            </form>
+          </section>
+        )
+      }
+      <section class="card p-5">
+        <h2 class="mb-4 font-bold">Ganti password saya</h2>
+        <form method="post" action="/api/account/password" class="space-y-3">
+          <input name="current" type="password" required placeholder="Password lama" class="input" autocomplete="current-password" />
+          <input name="next" type="password" required minlength="8" placeholder="Password baru (min. 8)" class="input" autocomplete="new-password" />
+          <button class="btn-primary">Ganti password</button>
+        </form>
+      </section>
+    </div>
+  </div>
+</Dash>

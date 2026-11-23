@@ -1,0 +1,125 @@
+---
+import Site from "../layouts/Site.astro";
+import PortfolioCard from "../components/PortfolioCard.astro";
+import { api } from "../lib/api";
+import { SERVICES } from "@shared/constants";
+import type { PortfolioItem } from "@shared/types";
+
+const { featured, stats } = await api<{ featured: PortfolioItem[]; stats: { done: number; clients: number } }>(
+  Astro,
+  "/api/public/home",
+);
+
+const numbers = [
+  { value: stats.done, label: "Proyek selesai" },
+  { value: stats.clients, label: "Klien dilayani" },
+  { value: SERVICES.length, label: "Layanan utama" },
+];
+const steps = [
+  { n: "01", title: "Diskusi & Riset", desc: "Memahami tujuan bisnis, pengguna, dan kebutuhan fitur." },
+  { n: "02", title: "Desain UI/UX", desc: "Wireframe dan prototipe interaktif untuk disetujui bersama." },
+  { n: "03", title: "Development", desc: "Dibangun bertahap dengan progres yang bisa Anda pantau." },
+  { n: "04", title: "Launch & Support", desc: "Go-live, training, dan dukungan setelah peluncuran." },
+];
+---
+
+<Site>
+  <!-- HERO -->
+  <section class="relative overflow-hidden">
+    <div class="pointer-events-none absolute -top-40 left-1/2 h-[520px] w-[820px] -translate-x-1/2 rounded-full bg-accent/30 blur-[120px]"></div>
+    <div class="pointer-events-none absolute top-40 -right-20 h-72 w-72 rounded-full bg-accent-2/20 blur-[100px]"></div>
+    <div class="relative mx-auto max-w-6xl px-4 pb-20 pt-20 md:pt-28">
+      <p class="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-white/70">
+        <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Menerima proyek baru
+      </p>
+      <h1 class="max-w-4xl text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl md:text-7xl">
+        Kami membangun <span class="bg-gradient-to-r from-accent to-accent-2 bg-clip-text text-transparent">produk digital</span> yang bekerja untuk bisnis Anda.
+      </h1>
+      <p class="mt-6 max-w-xl text-base text-white/60 sm:text-lg">
+        Website company profile, aplikasi web, dan mobile app — dirancang rapi, dibangun cepat, dan mudah dikembangkan.
+      </p>
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href="/contact" class="btn-primary rounded-full px-6 py-3 text-base">Konsultasi Gratis →</a>
+        <a href="/portfolio" class="btn rounded-full border border-white/15 px-6 py-3 text-base text-white hover:bg-white/5">Lihat Portofolio</a>
+      </div>
+      <dl class="mt-16 grid max-w-2xl grid-cols-3 gap-6 border-t border-white/10 pt-8">
+        {
+          numbers.map((s) => (
+            <div>
+              <dt class="text-xs text-white/50 sm:text-sm">{s.label}</dt>
+              <dd class="mt-1 text-3xl font-extrabold sm:text-4xl">{s.value}+</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+  </section>
+
+  <!-- LAYANAN -->
+  <section id="layanan" class="scroll-mt-24 border-t border-white/5 bg-ink-2">
+    <div class="mx-auto max-w-6xl px-4 py-20">
+      <p class="text-sm font-semibold text-accent-2">Layanan</p>
+      <h2 class="mt-2 max-w-2xl text-3xl font-extrabold tracking-tight sm:text-4xl">Satu tim untuk desain sampai development.</h2>
+      <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {
+          SERVICES.map((s) => (
+            <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-6 transition hover:border-accent/60">
+              <div class="text-3xl">{s.icon}</div>
+              <h3 class="mt-5 text-lg font-bold">{s.title}</h3>
+              <p class="mt-2 text-sm text-white/55">{s.desc}</p>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- PORTOFOLIO -->
+  <section class="mx-auto max-w-6xl px-4 py-20">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="text-sm font-semibold text-accent-2">Portofolio</p>
+        <h2 class="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Karya pilihan</h2>
+      </div>
+      <a href="/portfolio" class="text-sm text-white/70 hover:text-white">Semua karya →</a>
+    </div>
+    {
+      featured.length === 0 ? (
+        <p class="mt-10 text-white/50">Belum ada karya yang ditampilkan.</p>
+      ) : (
+        <div class="mt-10 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+          {featured.map((item) => <PortfolioCard item={item} />)}
+        </div>
+      )
+    }
+  </section>
+
+  <!-- PROSES -->
+  <section class="border-t border-white/5 bg-ink-2">
+    <div class="mx-auto max-w-6xl px-4 py-20">
+      <p class="text-sm font-semibold text-accent-2">Cara kerja</p>
+      <h2 class="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Proses yang transparan</h2>
+      <div class="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+        {
+          steps.map((s) => (
+            <div class="border-t border-white/15 pt-5">
+              <span class="text-sm font-bold text-accent">{s.n}</span>
+              <h3 class="mt-2 font-bold">{s.title}</h3>
+              <p class="mt-2 text-sm text-white/55">{s.desc}</p>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="mx-auto max-w-6xl px-4 py-20">
+    <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-accent to-[#3b2fd0] px-6 py-14 text-center sm:px-12">
+      <div class="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-accent-2/40 blur-3xl"></div>
+      <h2 class="relative text-3xl font-extrabold tracking-tight sm:text-4xl">Punya ide proyek?</h2>
+      <p class="relative mx-auto mt-3 max-w-lg text-white/80">Ceritakan kebutuhan Anda. Kami bantu susun scope, estimasi waktu, dan biaya.</p>
+      <a href="/contact" class="btn relative mt-8 rounded-full bg-white px-6 py-3 text-base text-ink hover:bg-white/90">Hubungi Kami</a>
+    </div>
+  </section>
+</Site>

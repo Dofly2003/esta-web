@@ -1,0 +1,48 @@
+---
+import Site from "../../layouts/Site.astro";
+import PortfolioCard from "../../components/PortfolioCard.astro";
+import { api } from "../../lib/api";
+import { PORTFOLIO_CATEGORIES } from "@shared/constants";
+import type { PortfolioItem } from "@shared/types";
+
+const kategori = Astro.url.searchParams.get("kategori") ?? "";
+const items = await api<PortfolioItem[]>(
+  Astro,
+  `/api/public/portfolio${kategori ? `?kategori=${encodeURIComponent(kategori)}` : ""}`,
+);
+const filters = [{ label: "Semua", value: "" }, ...PORTFOLIO_CATEGORIES.map((c) => ({ label: c, value: c }))];
+---
+
+<Site title="Portofolio">
+  <section class="mx-auto max-w-6xl px-4 py-16">
+    <p class="text-sm font-semibold text-accent-2">Portofolio</p>
+    <h1 class="mt-2 text-4xl font-extrabold tracking-tight sm:text-5xl">Karya kami</h1>
+    <p class="mt-4 max-w-xl text-white/60">Beberapa proyek website, aplikasi, dan desain yang telah kami kerjakan bersama klien.</p>
+
+    <div class="mt-10 flex flex-wrap gap-2">
+      {
+        filters.map((f) => (
+          <a
+            href={f.value ? `/portfolio?kategori=${encodeURIComponent(f.value)}` : "/portfolio"}
+            class:list={[
+              "rounded-full border px-4 py-1.5 text-sm transition",
+              kategori === f.value ? "border-accent bg-accent text-white" : "border-white/15 text-white/70 hover:text-white",
+            ]}
+          >
+            {f.label}
+          </a>
+        ))
+      }
+    </div>
+
+    {
+      items.length === 0 ? (
+        <p class="mt-16 text-white/50">Belum ada karya di kategori ini.</p>
+      ) : (
+        <div class="mt-12 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((item) => <PortfolioCard item={item} />)}
+        </div>
+      )
+    }
+  </section>
+</Site>

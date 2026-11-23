@@ -1,0 +1,9 @@
+---
+interface Props {
+  opt?: { label: string; cls: string };
+  fallback?: string;
+}
+const { opt, fallback = "—" } = Astro.props;
+---
+
+<span class:list={["badge", opt ? opt.cls : "bg-zinc-100 text-zinc-600"]}>{opt ? opt.label : fallback}</span>

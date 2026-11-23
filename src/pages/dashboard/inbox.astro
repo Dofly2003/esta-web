@@ -1,0 +1,63 @@
+---
+import Dash from "../../layouts/Dash.astro";
+import PageHeader from "../../components/dash/PageHeader.astro";
+import { autoSubmit, confirmAttr, pill } from "../../components/dash/ui";
+import { api } from "../../lib/api";
+import { INQUIRY_STATUS } from "@shared/constants";
+import { fmtDate } from "@shared/format";
+import type { Inquiry } from "@shared/types";
+
+const status = Astro.url.searchParams.get("status") ?? "";
+const items = await api<Inquiry[]>(Astro, `/api/inquiries${status ? `?status=${status}` : ""}`);
+const back = Astro.url.pathname + Astro.url.search;
+---
+
+<Dash title="Inbox">
+  <PageHeader title="Inbox" subtitle="Pesan dari form Kontak di website." />
+  <div class="mb-6 flex flex-wrap gap-2">
+    <a href="/dashboard/inbox" class={pill(!status)}>Semua</a>
+    {Object.entries(INQUIRY_STATUS).map(([k, v]) => <a href={`/dashboard/inbox?status=${k}`} class={pill(status === k)}>{v.label}</a>)}
+  </div>
+
+  {
+    items.length === 0 ? (
+      <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">Belum ada pesan.</p>
+    ) : (
+      <div class="space-y-3">
+        {items.map((q) => (
+          <article class="card p-5">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="font-semibold">{q.name} {q.company && <span class="font-normal text-zinc-500">· {q.company}</span>}</p>
+                <a href={`mailto:${q.email}`} class="text-sm text-accent hover:underline">{q.email}</a>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-zinc-400">{fmtDate(q.createdAt)}</span>
+                <form method="post" action={`/api/inquiries/${q.id}/status`}>
+                  <input type="hidden" name="_back" value={back} />
+                  <select name="status" aria-label="Status" class="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs" {...autoSubmit}>
+                    {Object.entries(INQUIRY_STATUS).map(([k, v]) => <option value={k} selected={q.status === k}>{v.label}</option>)}
+                  </select>
+                </form>
+              </div>
+            </div>
+            {(q.service || q.budget) && (
+              <div class="mt-3 flex flex-wrap gap-2">
+                {q.service && <span class="badge bg-violet-50 text-violet-700">{q.service}</span>}
+                {q.budget && <span class="badge bg-zinc-100 text-zinc-600">{q.budget}</span>}
+              </div>
+            )}
+            <p class="mt-3 whitespace-pre-line text-sm text-zinc-700">{q.message}</p>
+            <div class="mt-4 flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
+              <a href={`mailto:${q.email}?subject=${encodeURIComponent("Re: Inquiry proyek ESTA")}`} class="btn-ghost">Balas email</a>
+              <form method="post" action={`/api/inquiries/${q.id}/delete`}>
+                <input type="hidden" name="_back" value={back} />
+                <button class="btn-danger" {...confirmAttr("Hapus pesan ini?")}>Hapus</button>
+              </form>
+            </div>
+          </article>
+        ))}
+      </div>
+    )
+  }
+</Dash>

@@ -1,0 +1,67 @@
+---
+import Base from "./Base.astro";
+import Logo from "../components/Logo.astro";
+import { BRAND } from "@shared/constants";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+const nav = [
+  { href: "/", label: "Beranda" },
+  { href: "/#layanan", label: "Layanan" },
+  { href: "/portfolio", label: "Portofolio" },
+  { href: "/contact", label: "Kontak" },
+];
+---
+
+<Base {...Astro.props}>
+  <div class="min-h-screen bg-ink text-white">
+    <header class="sticky top-0 z-40 border-b border-white/5 bg-ink/80 backdrop-blur">
+      <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
+        <Logo />
+        <nav class="hidden items-center gap-8 text-sm text-white/70 md:flex">
+          {nav.map((n) => <a href={n.href} class="hover:text-white">{n.label}</a>)}
+        </nav>
+        <div class="flex items-center gap-2">
+          <a href="/login" class="hidden text-sm text-white/60 hover:text-white sm:block">Login Tim</a>
+          <a href="/contact" class="btn-primary rounded-full">Mulai Proyek</a>
+        </div>
+      </div>
+      <nav class="flex gap-5 overflow-x-auto px-4 pb-3 text-sm text-white/70 md:hidden">
+        {nav.map((n) => <a href={n.href} class="shrink-0 hover:text-white">{n.label}</a>)}
+        <a href="/login" class="shrink-0 hover:text-white">Login Tim</a>
+      </nav>
+    </header>
+
+    <main><slot /></main>
+
+    <footer class="border-t border-white/5">
+      <div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-4">
+        <div class="md:col-span-2">
+          <Logo />
+          <p class="mt-4 max-w-sm text-sm text-white/50">
+            {BRAND.tagline} yang membantu bisnis tumbuh lewat website, aplikasi web, dan mobile app.
+          </p>
+        </div>
+        <div class="text-sm">
+          <p class="mb-3 font-semibold">Navigasi</p>
+          <ul class="space-y-2 text-white/50">
+            {nav.map((n) => <li><a href={n.href} class="hover:text-white">{n.label}</a></li>)}
+          </ul>
+        </div>
+        <div class="text-sm">
+          <p class="mb-3 font-semibold">Kontak</p>
+          <ul class="space-y-2 text-white/50">
+            <li>{BRAND.email}</li>
+            <li>{BRAND.phone}</li>
+            <li>{BRAND.address}</li>
+          </ul>
+        </div>
+      </div>
+      <p class="border-t border-white/5 py-6 text-center text-xs text-white/40">
+        © {new Date().getFullYear()} {BRAND.name}. All rights reserved.
+      </p>
+    </footer>
+  </div>
+</Base>

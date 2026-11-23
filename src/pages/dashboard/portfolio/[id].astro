@@ -1,0 +1,76 @@
+---
+import Dash from "../../../layouts/Dash.astro";
+import PageHeader from "../../../components/dash/PageHeader.astro";
+import { confirmAttr } from "../../../components/dash/ui";
+import { apiOrNull } from "../../../lib/api";
+import { PORTFOLIO_CATEGORIES } from "@shared/constants";
+import type { PortfolioItem, Project } from "@shared/types";
+
+const id = Astro.params.id!;
+const data = await apiOrNull<{ item: PortfolioItem | null; projects: Project[] }>(
+  Astro,
+  `/api/portfolio/${encodeURIComponent(id)}`,
+);
+if (!data) return Astro.redirect("/dashboard/portfolio?err=" + encodeURIComponent("Karya tidak ditemukan."));
+const { item, projects } = data;
+const isNew = !item;
+---
+
+<Dash title={isNew ? "Tambah karya" : `Edit: ${item!.title}`}>
+  <a href="/dashboard/portfolio" class="text-sm text-zinc-500 hover:text-accent">← Portofolio</a>
+  <div class="mt-3">
+    <PageHeader title={isNew ? "Tambah karya" : `Edit: ${item!.title}`}>
+      {item?.published && <a href={`/portfolio/${item.slug}`} target="_blank" class="btn-ghost">Lihat di web ↗</a>}
+    </PageHeader>
+  </div>
+
+  <form method="post" action={isNew ? "/api/portfolio" : `/api/portfolio/${item!.id}`} class="card grid gap-4 p-5 sm:grid-cols-2">
+    <input type="hidden" name="_back" value={Astro.url.pathname} />
+    <div class="sm:col-span-2"><label class="label">Judul *</label><input name="title" required value={item?.title} class="input" /></div>
+    <div><label class="label">Klien</label><input name="client" value={item?.client} class="input" /></div>
+    <div><label class="label">Slug URL (kosongkan = otomatis)</label><input name="slug" value={item?.slug} class="input" placeholder="nama-proyek" /></div>
+    <div>
+      <label class="label">Kategori</label>
+      <select name="category" class="input">
+        {PORTFOLIO_CATEGORIES.map((c) => <option selected={(item?.category ?? "Website") === c}>{c}</option>)}
+      </select>
+    </div>
+    <div><label class="label">Tahun</label><input name="year" inputmode="numeric" value={item?.year ?? new Date().getFullYear()} class="input" /></div>
+    <div class="sm:col-span-2"><label class="label">Ringkasan (1–2 kalimat)</label><textarea name="summary" rows="2" class="input">{item?.summary}</textarea></div>
+    <div class="sm:col-span-2">
+      <label class="label">Cerita proyek (pisahkan paragraf dengan baris kosong)</label>
+      <textarea name="content" rows="7" class="input" placeholder="Tantangan, solusi, hasil…">{item?.content}</textarea>
+    </div>
+    <div><label class="label">Teknologi / tag (pisah koma)</label><input name="tags" value={item?.tags} class="input" placeholder="Astro, Figma, SEO" /></div>
+    <div><label class="label">Link live (opsional)</label><input name="liveUrl" type="url" value={item?.liveUrl ?? ""} class="input" placeholder="https://" /></div>
+    <div>
+      <label class="label">Link gambar cover (kosongkan = pakai warna)</label>
+      <input name="imageUrl" type="url" value={item?.imageUrl ?? ""} class="input" placeholder="https://… .jpg / .png / .webp" />
+    </div>
+    <div>
+      <label class="label">Warna cover (dipakai jika tanpa gambar)</label>
+      <input name="coverColor" type="color" value={item?.coverColor ?? "#6d5efc"} class="h-10 w-20 rounded-lg border border-zinc-300" />
+    </div>
+    <div>
+      <label class="label">Terhubung ke proyek internal</label>
+      <select name="projectId" class="input">
+        <option value="">—</option>
+        {projects.map((p) => <option value={p.id} selected={item?.projectId === p.id}>{p.name}</option>)}
+      </select>
+    </div>
+    <div><label class="label">Urutan tampil (kecil = duluan)</label><input name="sortOrder" inputmode="numeric" value={item?.sortOrder ?? 0} class="input" /></div>
+    <div class="flex flex-wrap gap-6 sm:col-span-2">
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="published" checked={item?.published ?? false} /> Tayang di website</label>
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="featured" checked={item?.featured ?? false} /> Unggulan di Beranda</label>
+    </div>
+    <div class="sm:col-span-2"><button type="submit" class="btn-primary">Simpan karya</button></div>
+  </form>
+
+  {
+    item && (
+      <form method="post" action={`/api/portfolio/${item.id}/delete`} class="mt-4">
+        <button class="btn-danger" {...confirmAttr("Hapus karya ini dari portofolio?")}>Hapus karya</button>
+      </form>
+    )
+  }
+</Dash>

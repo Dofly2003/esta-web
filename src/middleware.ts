@@ -1,14 +1,19 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { defineMiddleware } from "astro:middleware";
+import { api, ApiError } from "./lib/api";
+import type { User } from "@shared/types";
 
-// Pemeriksaan cepat di edge: hanya cek ada/tidaknya cookie.
-// Verifikasi sesungguhnya (Firebase session cookie) dilakukan di requireUser().
-export function middleware(req: NextRequest) {
-  if (!req.cookies.get("esta_session")?.value) {
-    const url = new URL("/login", req.url);
-    url.searchParams.set("next", req.nextUrl.pathname);
-    return NextResponse.redirect(url);
+// Semua halaman /dashboard wajib login. Data user disimpan di Astro.locals.user.
+export const onRequest = defineMiddleware(async (ctx, next) => {
+  const { pathname, search } = ctx.url;
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
+    try {
+      ctx.locals.user = await api<User>(ctx, "/api/me");
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        return ctx.redirect(`/login?next=${encodeURIComponent(pathname + search)}`);
+      }
+      throw e;
+    }
   }
-  return NextResponse.next();
-}
-
-export const config = { matcher: ["/dashboard/:path*"] };
+  return next();
+});
