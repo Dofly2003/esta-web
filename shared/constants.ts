@@ -1,11 +1,14 @@
 export const BRAND = {
-  name: "ESTA",
-  tagline: "Digital Studio",
+  name: "ESTA Studio",
+  tagline: "Website & Software Studio",
+  // Placeholder — email & nomor asli belum dicantumkan
   email: "hello@esta.id",
   phone: "+62 812-0000-0000",
   whatsapp: "6281200000000",
-  address: "Indonesia",
-  instagram: "https://instagram.com/",
+  address: "Surabaya, Indonesia",
+  city: "Surabaya",
+  instagram: "https://instagram.com/esta.team",
+  instagramHandle: "@esta.team",
   linkedin: "https://linkedin.com/",
 };
 
@@ -50,27 +53,38 @@ export const ROLES: Record<string, string> = { ADMIN: "Admin", MEMBER: "Anggota"
 
 export const PORTFOLIO_CATEGORIES = ["Website", "Web App", "Mobile App", "UI/UX"];
 
-export const SERVICES = [
-  {
-    title: "Website Company Profile",
-    desc: "Website cepat, rapi, dan mudah dikelola untuk membangun kepercayaan calon klien.",
-    icon: "🌐",
+export type Service = { title: string; group: "website" | "software" };
+
+export const SERVICE_GROUPS = {
+  website: {
+    title: "Pembuatan Website",
+    desc: "Website yang cepat dibuka di ponsel dan langsung menjelaskan apa yang bisnismu tawarkan.",
   },
-  {
-    title: "Web Application",
-    desc: "Dashboard, sistem internal, dan aplikasi web custom sesuai alur bisnis Anda.",
-    icon: "⚙️",
+  software: {
+    title: "Pembuatan Software",
+    desc: "Software yang dibangun mengikuti alur kerja timmu yang sudah berjalan.",
   },
-  {
-    title: "Mobile App",
-    desc: "Aplikasi Android & iOS dengan pengalaman pengguna yang mulus.",
-    icon: "📱",
-  },
-  {
-    title: "UI/UX Design",
-    desc: "Riset, wireframe, dan prototipe interaktif sebelum satu baris kode ditulis.",
-    icon: "🎨",
-  },
+} as const;
+
+export const SERVICES: Service[] = [
+  { title: "Website Company Profile", group: "website" },
+  { title: "Landing Page", group: "website" },
+  { title: "Website Bisnis", group: "website" },
+  { title: "Aplikasi Web", group: "website" },
+  { title: "Desain Website Responsif", group: "website" },
+  { title: "Software Sesuai Kebutuhan", group: "software" },
+  { title: "Aplikasi Desktop", group: "software" },
+  { title: "Aplikasi Mobile", group: "software" },
+  { title: "Sistem Informasi Bisnis", group: "software" },
+  { title: "Solusi Digital Sesuai Kebutuhan", group: "software" },
+];
+
+// Bonus yang didapat setiap klien
+export const PERKS = [
+  { title: "Gratis Revisi Minor 5x", desc: "Revisi minor sampai 5 kali tanpa biaya tambahan." },
+  { title: "Gratis Pendampingan", desc: "Didampingi dari diskusi awal sampai website atau aplikasi dipakai timmu." },
+  { title: "Gratis Perbaikan Bug", desc: "Bug yang muncul setelah peluncuran kami perbaiki tanpa biaya tambahan." },
+  { title: "Gratis Hosting & SSL", desc: "Langsung online dengan koneksi aman (https) tanpa repot mengurus server." },
 ];
 
 export const BUDGETS = ["< Rp10 juta", "Rp10–25 juta", "Rp25–50 juta", "> Rp50 juta", "Belum tahu"];

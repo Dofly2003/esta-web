@@ -4,19 +4,28 @@ import type { PortfolioItem } from "@shared/types";
 
 interface Props {
   item: PortfolioItem;
+  index?: number;
+  /** level judul kartu, mengikuti struktur heading halaman */
+  level?: "h2" | "h3";
 }
-const { item } = Astro.props;
+const { item, index = 0, level: Title = "h3" } = Astro.props;
 ---
 
-<a href={`/portfolio/${item.slug}`} class="group block">
-  <div class="aspect-[4/3] overflow-hidden rounded-2xl bg-ink-3">
-    <Cover item={item} class="transition duration-500 group-hover:scale-105" />
+<a href={`/portfolio/${item.slug}`} data-card class="group flex flex-col border border-white/10 bg-ink-2 transition-colors hover:border-white/30">
+  <div class="aspect-[4/3] overflow-hidden">
+    <div data-card-media class="h-full w-full"><Cover item={item} /></div>
   </div>
-  <div class="mt-4 flex items-start justify-between gap-4">
-    <div>
-      <h3 class="text-lg font-bold text-white group-hover:text-accent-2">{item.title}</h3>
-      <p class="text-sm text-white/50">{item.client}</p>
+  <div class="flex flex-1 flex-col justify-between gap-6 bg-black/30 p-5">
+    <div class="flex items-center justify-between">
+      <span class="mono text-[11px] text-sky">{item.category}</span>
+      <span class="mono-dim text-[11px]">-- {String(index + 1).padStart(3, "0")}.</span>
     </div>
-    <span class="shrink-0 rounded-full border border-white/15 px-3 py-1 text-xs text-white/70">{item.category}</span>
+    <div>
+      <Title class="text-2xl leading-[1.05] font-medium tracking-[-0.04em] text-white">{item.title}</Title>
+      <div class="mt-3 flex items-center justify-between gap-3">
+        <span class="mono-dim truncate text-[11px]">{item.client && `[ ${item.client} ]`}</span>
+        <span class="mono text-[11px] text-white/70 transition-colors group-hover:text-white">Lihat ▸</span>
+      </div>
+    </div>
   </div>
 </a>

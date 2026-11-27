@@ -240,7 +240,7 @@ on("POST", "/api/public/inquiries", async (c) => {
     message,
   });
   return done(c, {
-    ok: "Pesan terkirim! Tim kami akan menghubungi Anda dalam 1×24 jam kerja.",
+    ok: "Pesan terkirim. Kami akan menghubungimu dalam 1×24 jam kerja.",
     to: "/contact?terkirim=1",
   });
 });

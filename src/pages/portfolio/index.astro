@@ -1,5 +1,7 @@
 ---
 import Site from "../../layouts/Site.astro";
+import Heading from "../../components/Heading.astro";
+import PixelCorner from "../../components/PixelCorner.astro";
 import PortfolioCard from "../../components/PortfolioCard.astro";
 import { api } from "../../lib/api";
 import { PORTFOLIO_CATEGORIES } from "@shared/constants";
@@ -14,35 +16,57 @@ const filters = [{ label: "Semua", value: "" }, ...PORTFOLIO_CATEGORIES.map((c) 
 ---
 
 <Site title="Portofolio">
-  <section class="mx-auto max-w-6xl px-4 py-16">
-    <p class="text-sm font-semibold text-accent-2">Portofolio</p>
-    <h1 class="mt-2 text-4xl font-extrabold tracking-tight sm:text-5xl">Karya kami</h1>
-    <p class="mt-4 max-w-xl text-white/60">Beberapa proyek website, aplikasi, dan desain yang telah kami kerjakan bersama klien.</p>
+  <section data-hero data-section class="grid-bg relative isolate overflow-hidden">
+    <PixelCorner corner="tr" from="#6b4fc8" to="#5ec8f2" class="-z-10" />
+    <div class="container-x pt-40 pb-20">
+      <p data-fade class="mono-dim mb-14">-- Karya yang sudah kami kerjakan.</p>
+      <Heading
+        as="h1"
+        size="xl"
+        lines={[
+          { text: "Karya", font: "sans" },
+          { text: "Kami.", font: "pixel", indent: "0.9em" },
+        ]}
+      />
+      <p data-fade class="mt-10 max-w-md text-[15px] leading-relaxed text-white/70">
+        Website, aplikasi, dan sistem yang kami bangun bersama klien. Pilih kategori untuk menyaring.
+      </p>
+    </div>
+  </section>
 
-    <div class="mt-10 flex flex-wrap gap-2">
+  <section data-section class="bg-ink">
+    <div class="container-x pb-28">
+      <nav data-fade class="flex flex-wrap gap-2 border-y border-white/10 py-4" aria-label="Kategori">
+        {
+          filters.map((f) => (
+            <a
+              href={f.value ? `/portfolio?kategori=${encodeURIComponent(f.value)}` : "/portfolio"}
+              aria-current={kategori === f.value ? "page" : undefined}
+              class:list={[
+                "mono px-3 py-2 text-[12px] transition-colors",
+                kategori === f.value ? "bg-white text-ink" : "text-white/60 hover:text-white",
+              ]}
+            >
+              [ {f.label} ]
+            </a>
+          ))
+        }
+      </nav>
+
       {
-        filters.map((f) => (
-          <a
-            href={f.value ? `/portfolio?kategori=${encodeURIComponent(f.value)}` : "/portfolio"}
-            class:list={[
-              "rounded-full border px-4 py-1.5 text-sm transition",
-              kategori === f.value ? "border-accent bg-accent text-white" : "border-white/15 text-white/70 hover:text-white",
-            ]}
-          >
-            {f.label}
-          </a>
-        ))
+        items.length === 0 ? (
+          <p class="mt-16 text-white/60">
+            Belum ada karya di kategori ini.{" "}
+            <a href="/portfolio" class="text-sky underline-offset-4 hover:underline">Lihat semua karya</a>
+          </p>
+        ) : (
+          <div data-stagger class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((item, i) => (
+              <PortfolioCard item={item} index={i} level="h2" />
+            ))}
+          </div>
+        )
       }
     </div>
-
-    {
-      items.length === 0 ? (
-        <p class="mt-16 text-white/50">Belum ada karya di kategori ini.</p>
-      ) : (
-        <div class="mt-12 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => <PortfolioCard item={item} />)}
-        </div>
-      )
-    }
   </section>
 </Site>

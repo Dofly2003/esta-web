@@ -1,38 +1,64 @@
 ---
 import Site from "../layouts/Site.astro";
+import Heading from "../components/Heading.astro";
+import PixelCorner from "../components/PixelCorner.astro";
 import ContactForm from "../components/ContactForm.tsx";
 import { BRAND } from "@shared/constants";
 
 // Untuk pengunjung tanpa JavaScript: hasil kirim form ditampilkan dari query ?ok= / ?err=
 const ok = Astro.url.searchParams.get("ok");
 const err = Astro.url.searchParams.get("err");
+const info = [
+  { k: "Waktu balas", v: "Maks. 1×24 jam kerja" },
+  { k: "Konsultasi", v: "Gratis, tanpa komitmen" },
+  { k: "Area", v: `${BRAND.city} & online se-Indonesia` },
+  { k: "Instagram", v: BRAND.instagramHandle, href: BRAND.instagram },
+];
 ---
 
 <Site title="Kontak">
-  <section class="mx-auto grid max-w-6xl gap-12 px-4 py-16 md:grid-cols-5">
-    <div class="md:col-span-2">
-      <p class="text-sm font-semibold text-accent-2">Kontak</p>
-      <h1 class="mt-2 text-4xl font-extrabold tracking-tight sm:text-5xl">Mari diskusikan proyek Anda.</h1>
-      <p class="mt-4 text-white/60">Isi form, atau hubungi kami langsung. Konsultasi awal gratis dan tanpa komitmen.</p>
-      <ul class="mt-10 space-y-5 text-sm">
-        <li>
-          <p class="text-white/40">Email</p>
-          <a href={`mailto:${BRAND.email}`} class="font-semibold hover:text-accent-2">{BRAND.email}</a>
-        </li>
-        <li>
-          <p class="text-white/40">WhatsApp</p>
-          <a href={`https://wa.me/${BRAND.whatsapp}`} target="_blank" rel="noreferrer" class="font-semibold hover:text-accent-2">{BRAND.phone}</a>
-        </li>
-        <li>
-          <p class="text-white/40">Lokasi</p>
-          <p class="font-semibold">{BRAND.address}</p>
-        </li>
-      </ul>
-    </div>
-    <div class="rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-8 md:col-span-3">
-      {ok && <p class="mb-4 rounded-xl bg-emerald-500/15 p-3 text-sm text-emerald-300">{ok}</p>}
-      {err && <p class="mb-4 rounded-xl bg-rose-500/15 p-3 text-sm text-rose-300">{err}</p>}
-      <ContactForm client:load />
+  <section data-hero data-section class="grid-bg relative isolate overflow-hidden">
+    <PixelCorner corner="tr" from="#5a5fd8" to="#5ec8f2" class="-z-10" />
+    <div class="container-x grid gap-16 pt-40 pb-28 lg:grid-cols-[1fr_1.15fr]">
+      <div>
+        <p data-fade class="mono-dim mb-14">-- Konsultasi proyek digitalmu.</p>
+        <Heading
+          as="h1"
+          size="lg"
+          lines={[
+            { text: "Mari Bangun", font: "sans" },
+            { text: "Bersama.", font: "pixel", indent: "0.8em" },
+          ]}
+        />
+        <p data-fade class="mt-10 max-w-sm text-[15px] leading-relaxed text-white/70">
+          Ceritakan bisnismu dan apa yang ingin dibuat. Kami balas dengan langkah berikutnya: jadwal diskusi, scope awal,
+          dan estimasi.
+        </p>
+        <dl data-stagger class="mt-12 border-t border-white/10">
+          {
+            info.map((i) => (
+              <div class="flex items-baseline justify-between gap-6 border-b border-white/10 py-4">
+                <dt class="mono-dim text-[11px]">[ {i.k} ]</dt>
+                <dd class="text-right">
+                  {i.href ? (
+                    <a href={i.href} target="_blank" rel="noreferrer" class="hover:text-sky">
+                      {i.v}
+                    </a>
+                  ) : (
+                    i.v
+                  )}
+                </dd>
+              </div>
+            ))
+          }
+        </dl>
+      </div>
+      <div data-fade class="border border-white/12 bg-ink-2/80 p-6 backdrop-blur sm:p-8">
+        <p class="mono-dim mb-6">[ Form konsultasi ]</p>
+        {ok && <p class="mb-4 border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">{ok}</p>}
+        {err && <p class="mb-4 border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-300">{err}</p>}
+        <ContactForm client:load />
+      </div>
     </div>
   </section>
 </Site>

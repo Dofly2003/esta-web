@@ -1,0 +1,52 @@
+---
+// Blok pixel bertangga di sudut section + "ekor" titik bulat yang mengecil
+// (perpaduan grid pixel dan titik khas logo ESTA).
+interface Props {
+  corner: "tr" | "bl" | "br" | "tl";
+  from?: string;
+  to?: string;
+  class?: string;
+}
+const { corner, from = "#6b4fc8", to = "#5ec8f2", class: className = "" } = Astro.props;
+const id = `pc-${Math.random().toString(36).slice(2, 8)}`;
+
+// Bentuk dasar = sudut kanan-atas; sudut lain dicerminkan lewat transform.
+const flip = {
+  tr: "",
+  tl: "scale(-1 1) translate(-450 0)",
+  br: "scale(1 -1) translate(0 -270)",
+  bl: "scale(-1 -1) translate(-450 -270)",
+}[corner];
+const pos = {
+  tr: "top-0 right-0 origin-top-right",
+  tl: "top-0 left-0 origin-top-left",
+  br: "bottom-0 right-0 origin-bottom-right",
+  bl: "bottom-0 left-0 origin-bottom-left",
+}[corner];
+const dots = [
+  { cx: 150, cy: 30, r: 13 },
+  { cx: 105, cy: 30, r: 9 },
+  { cx: 68, cy: 30, r: 6 },
+  { cx: 240, cy: 120, r: 11 },
+  { cx: 200, cy: 120, r: 7 },
+  { cx: 330, cy: 210, r: 9 },
+];
+---
+
+<svg
+  data-corner={corner}
+  class={`pointer-events-none absolute w-[46vw] max-w-[450px] min-w-[220px] ${pos} ${className}`}
+  viewBox="0 0 450 270"
+  aria-hidden="true"
+>
+  <defs>
+    <linearGradient id={id} x1="0" y1="0.2" x2="0.7" y2="0.7">
+      <stop offset="0" stop-color={from} />
+      <stop offset="1" stop-color={to} />
+    </linearGradient>
+  </defs>
+  <g transform={flip}>
+    <path data-step d="M180 0 H450 V270 H390 V180 H300 V120 H240 V60 H180 Z" fill={`url(#${id})`} />
+    {dots.map((d) => <circle data-dot cx={d.cx + 30} cy={d.cy} r={d.r} fill={`url(#${id})`} />)}
+  </g>
+</svg>

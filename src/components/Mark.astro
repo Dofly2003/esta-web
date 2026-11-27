@@ -1,0 +1,51 @@
+---
+// Logo mark ESTA: panah "play" dari titik-titik ESTA, digambar ulang sebagai
+// grid pixel bertangga. Kolom makin ke kanan makin pudar (kesan gerak maju).
+interface Props {
+  size?: number;
+  /** "grad" = gradasi brand, "white" / "ink" = satu warna */
+  tone?: "grad" | "white" | "ink";
+  class?: string;
+}
+const { size = 28, tone = "grad", class: className = "" } = Astro.props;
+
+const rows = [1, 2, 3, 4, 3, 2, 1]; // jumlah pixel per baris → segitiga bertangga
+const cell = 10;
+const gap = 2;
+const pitch = cell + gap;
+const w = 4 * pitch + pitch; // + 1 kolom untuk pixel "percikan"
+const h = rows.length * pitch - gap;
+const id = `esta-g-${Math.random().toString(36).slice(2, 8)}`;
+const fill = tone === "grad" ? `url(#${id})` : tone === "white" ? "#fff" : "#0b0f2a";
+const opacityFor = (col: number) => [1, 1, 0.85, 0.65][col] ?? 1;
+---
+
+<svg
+  class={className}
+  width={(size * w) / h}
+  height={size}
+  viewBox={`0 0 ${w} ${h}`}
+  fill="none"
+  aria-hidden="true"
+>
+  {
+    tone === "grad" && (
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2={h} gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#5ec8f2" />
+          <stop offset="0.5" stop-color="#4f86e0" />
+          <stop offset="1" stop-color="#6b4fc8" />
+        </linearGradient>
+      </defs>
+    )
+  }
+  {
+    rows.map((n, r) =>
+      Array.from({ length: n }, (_, c) => (
+        <rect data-px x={c * pitch} y={r * pitch} width={cell} height={cell} fill={fill} opacity={opacityFor(c)} />
+      )),
+    )
+  }
+  <!-- percikan: satu titik bulat di ujung panah, gema dari logo titik ESTA lama -->
+  <circle data-px cx={4 * pitch + cell / 2} cy={3 * pitch + cell / 2} r={cell / 2.6} fill={fill} opacity="0.55" />
+</svg>
