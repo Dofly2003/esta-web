@@ -1,0 +1,38 @@
+---
+// Form hapus: tombol .btn-danger berikon tempat sampah + konfirmasi.
+// Slot default = isi di depan tombol (mis. teks zona hapus). Isi `back` hanya bila form memang mengirim _back.
+//   size="sm" → .btn-sm · quiet → tanpa bingkai, merah saat hover/fokus (baris berulang)
+//   iconOnly → label hanya untuk pembaca layar (tombol ikon)
+import Icon from "./Icon.astro";
+import { confirmAttr } from "./ui";
+
+interface Props {
+  action: string;
+  confirm: string;
+  label: string;
+  /** teks tambahan khusus pembaca layar, mis. " pesan dari Budi" (dengan spasi di depan) */
+  srSuffix?: string;
+  back?: string;
+  size?: "sm" | "md";
+  quiet?: boolean;
+  iconOnly?: boolean;
+  class?: string;
+  [attr: string]: unknown;
+}
+const { action, confirm, label, srSuffix, back, size = "md", quiet = false, iconOnly = false, class: cls, ...attrs } = Astro.props;
+---
+
+<form method="post" action={action} class={cls} {...attrs}>
+  {back !== undefined && <input type="hidden" name="_back" value={back} />}
+  <slot />
+  <button
+    type="submit"
+    class:list={["btn-danger", size === "sm" && "btn-sm", quiet && "is-quiet"]}
+    data-pending-label="Menghapus…"
+    title={iconOnly ? label : undefined}
+    {...confirmAttr(confirm)}
+  >
+    <Icon name="trash" class="ic-sm" />
+    {iconOnly ? <span class="vh">{label}{srSuffix}</span> : <>{label}{srSuffix && <span class="vh">{srSuffix}</span>}</>}
+  </button>
+</form>

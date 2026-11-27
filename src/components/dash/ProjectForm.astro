@@ -1,62 +1,145 @@
 ---
+// Form proyek (buat / edit). Dipakai hanya oleh halaman dashboard/projects.
+// Grid .form-grid.is-4: 1 kolom di ponsel, 2 kolom ≥640px, 4 kolom ≥1024px.
+// error = kode ?err= yang ditolak server; pesannya tampil di field yang salah (Nama / Klien / Nilai / Deadline);
+// isian dipulihkan oleh forms.ts (data-keep). data-guard: peringatan bila meninggalkan halaman dengan perubahan
+// belum disimpan. Edit: hidden `version` = updatedAt (bentrok antar-tab → err=stale, isian dipulihkan).
+// Baru: `prefill` (mis. dari inquiry) + `inquiryId` (server menandai inquiry itu "Jadi proyek").
+import Field from "./Field.astro";
+import Options from "./Options.astro";
+import { invalid } from "./ui";
 import { PROJECT_STATUS, PROJECT_TYPES } from "@shared/constants";
+import { ERR, type ErrCode } from "@shared/messages";
+import { today } from "@shared/format";
 import type { Project, User } from "@shared/types";
 
 interface Props {
   action: string;
   users: User[];
   project?: Project;
+  /** isian awal untuk proyek baru (mis. dari inquiry) */
+  prefill?: Partial<Project>;
+  /** proyek baru dari inquiry ini */
+  inquiryId?: string;
   submitLabel: string;
+  /** awalan id input agar label `for` tetap unik bila ada beberapa form di satu halaman */
+  idPrefix?: string;
+  /** tujuan kembali (_back), boleh dengan #anchor */
+  back: string;
+  /** tombol utama (btn-primary) atau sekunder (btn) — satu tombol utama per tampilan */
+  primary?: boolean;
+  error?: string | null;
+  id?: string;
+  autofocus?: boolean;
 }
-const { action, users, project, submitLabel } = Astro.props;
+const {
+  action,
+  users,
+  project,
+  prefill,
+  inquiryId,
+  submitLabel,
+  idPrefix = "pf",
+  back,
+  primary = true,
+  error,
+  id: formId,
+  autofocus = false,
+} = Astro.props;
+const id = (name: string) => `${idPrefix}-${name}`;
+const v = project ?? prefill ?? {};
+// proyek baru: tanggal mulai default hari ini (penanda waktu & "perlu perhatian" butuh tanggal mulai)
+const startDate = project ? project.startDate : (prefill?.startDate ?? today());
+/** pesan error untuk field ini bila kodenya salah satu `codes` */
+const errFor = (...codes: ErrCode[]) => (error && (codes as string[]).includes(error) ? ERR[error as ErrCode] : null);
+const nameErr = errFor("project-required", "project-name-required");
+// project-required = keduanya kosong: pesan di Nama, Klien hanya ditandai
+const clientErr = errFor("project-client-required");
+const clientInvalid = clientErr ?? (error === "project-required" ? ERR["project-required"] : null);
+const budgetErr = errFor("budget-invalid");
+const dueErr = errFor("project-dates", "date-invalid");
 ---
 
-<form method="post" action={action} class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-  <input type="hidden" name="_back" value={Astro.url.pathname} />
-  <div class="sm:col-span-2">
-    <label class="label">Nama proyek *</label>
-    <input name="name" required value={project?.name} class="input" placeholder="Website PT Maju Jaya" />
-  </div>
-  <div class="sm:col-span-2">
-    <label class="label">Klien *</label>
-    <input name="client" required value={project?.client} class="input" placeholder="PT Maju Jaya" />
-  </div>
-  <div>
-    <label class="label">Jenis</label>
-    <select name="type" class="input">
-      {Object.entries(PROJECT_TYPES).map(([k, v]) => <option value={k} selected={(project?.type ?? "WEBSITE") === k}>{v}</option>)}
+<form method="post" action={action} class="form-grid is-4" id={formId} data-guard data-keep={idPrefix}>
+  <input type="hidden" name="_back" value={back} />
+  {project && <input type="hidden" name="version" value={project.updatedAt} />}
+  {inquiryId && <input type="hidden" name="inquiryId" value={inquiryId} />}
+  <Field id={id("name")} label="Nama proyek" required class="half" error={nameErr}>
+    <input
+      id={id("name")}
+      name="name"
+      required
+      value={v.name}
+      class="input"
+      autocomplete="off"
+      autofocus={autofocus}
+      {...invalid(id("name"), nameErr)}
+    />
+  </Field>
+  <Field id={id("client")} label="Klien" required class="half" error={clientErr}>
+    <input
+      id={id("client")}
+      name="client"
+      required
+      value={v.client}
+      class="input"
+      autocomplete="off"
+      {...(clientErr ? invalid(id("client"), clientErr) : clientInvalid ? { "aria-invalid": "true", "aria-describedby": `${id("name")}-err` } : {})}
+    />
+  </Field>
+  <Field id={id("type")} label="Jenis">
+    <select id={id("type")} name="type" class="input">
+      <Options from={PROJECT_TYPES} selected={v.type ?? "WEBSITE"} />
     </select>
-  </div>
-  <div>
-    <label class="label">Status</label>
-    <select name="status" class="input">
-      {Object.entries(PROJECT_STATUS).map(([k, v]) => <option value={k} selected={(project?.status ?? "PLANNING") === k}>{v.label}</option>)}
+  </Field>
+  <Field id={id("status")} label="Status">
+    <select id={id("status")} name="status" class="input">
+      <Options from={PROJECT_STATUS} selected={v.status ?? "PLANNING"} />
     </select>
-  </div>
-  <div>
-    <label class="label">Penanggung jawab (PJ)</label>
-    <select name="leadId" class="input">
-      <option value="">—</option>
-      {users.map((u) => <option value={u.id} selected={project?.leadId === u.id}>{u.name}</option>)}
+  </Field>
+  <Field id={id("lead")} label="Penanggung jawab">
+    <select id={id("lead")} name="leadId" class="input">
+      <option value="">Tanpa penanggung jawab</option>
+      <Options from={users} selected={v.leadId} />
     </select>
-  </div>
-  <div>
-    <label class="label">Nilai proyek (Rp)</label>
-    <input name="budget" inputmode="numeric" value={project?.budget ?? ""} class="input" placeholder="15000000" />
-  </div>
-  <div>
-    <label class="label">Mulai</label>
-    <input name="startDate" type="date" value={project?.startDate ?? ""} class="input" />
-  </div>
-  <div>
-    <label class="label">Deadline</label>
-    <input name="dueDate" type="date" value={project?.dueDate ?? ""} class="input" />
-  </div>
-  <div class="sm:col-span-2 lg:col-span-4">
-    <label class="label">Deskripsi / scope</label>
-    <textarea name="description" rows="3" class="input">{project?.description}</textarea>
-  </div>
-  <div class="sm:col-span-2 lg:col-span-4">
-    <button type="submit" class="btn-primary">{submitLabel}</button>
+  </Field>
+  <Field id={id("budget")} label="Nilai proyek" hint="(Rp, opsional)" error={budgetErr}>
+    <input
+      id={id("budget")}
+      name="budget"
+      inputmode="numeric"
+      autocomplete="off"
+      value={v.budget ?? ""}
+      class="input num"
+      placeholder="mis. 15.000.000"
+      pattern="(Rp\.?\s*)?([0-9]+|[0-9]{1,3}(\.[0-9]{3})+)"
+      title="Angka rupiah bulat, mis. 15000000 atau 15.000.000 (tanpa koma/desimal)"
+      aria-describedby={budgetErr ? `${id("budget")}-err ${id("budget-rp")}` : id("budget-rp")}
+      aria-invalid={budgetErr ? "true" : undefined}
+      data-rupiah
+    />
+    <output id={id("budget-rp")} for={id("budget")} class="cap num" data-rupiah-out></output>
+  </Field>
+  <Field id={id("start")} label="Mulai">
+    <input id={id("start")} name="startDate" type="date" min="2000-01-01" max="2100-12-31" value={startDate ?? ""} class="input num" />
+  </Field>
+  <Field id={id("due")} label="Deadline" error={dueErr}>
+    <input
+      id={id("due")}
+      name="dueDate"
+      type="date"
+      min={startDate || "2000-01-01"}
+      max="2100-12-31"
+      value={v.dueDate ?? ""}
+      class="input num"
+      data-min-from={`#${id("start")}`}
+      {...invalid(id("due"), dueErr)}
+    />
+  </Field>
+  <Field id={id("desc")} label="Deskripsi / scope" hint="(opsional)" class="full">
+    <textarea id={id("desc")} name="description" rows={prefill?.description ? 6 : 3} class="input">{v.description}</textarea>
+  </Field>
+  <div class="full">
+    <button type="submit" class={primary ? "btn-primary" : "btn"}>{submitLabel}</button>
   </div>
 </form>

@@ -5,21 +5,18 @@
 // Password Firebase tidak bisa dipindahkan. admin@esta.id memakai SEED_PASSWORD dari .env;
 // akun lain mendapat password sementara yang ditulis ke data/initial-passwords.txt.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { client, ready } from "../server/db";
 import { hashPassword } from "../server/auth";
-import { inquiries, portfolio, projects, settings, tasks, users } from "../server/repo";
+import { inquiries, portfolio, projects, settings, tasks, users, wipeAll } from "../server/repo";
+import { DEFAULT_COVER } from "../shared/constants";
+import { currentYear } from "../shared/format";
+import { openForWrite } from "./_db";
 
 const file = "data/firestore-export.json";
 if (!existsSync(file)) {
   console.error(`File ${file} tidak ada.`);
   process.exit(1);
 }
-const force = process.argv.includes("--force");
-await ready;
-if ((await users.count()) > 0 && !force) {
-  console.error("Database sudah berisi data. Tambahkan --force untuk menghapus dan mengimpor ulang.");
-  process.exit(1);
-}
+const force = await openForWrite("mengimpor ulang");
 
 type Doc = Record<string, any>;
 const data = JSON.parse(readFileSync(file, "utf8")) as Record<string, Doc[]>;
@@ -41,10 +38,7 @@ const people = await Promise.all(
 );
 
 {
-  if (force)
-    await client.executeMultiple(
-      "DELETE FROM tasks; DELETE FROM portfolio; DELETE FROM projects; DELETE FROM inquiries; DELETE FROM sessions; DELETE FROM users; DELETE FROM settings;",
-    );
+  if (force) await wipeAll();
 
   for (const { u, hash } of people) {
     await users.create({
@@ -101,11 +95,11 @@ const people = await Promise.all(
       title: p.title,
       client: p.client ?? "",
       category: p.category ?? "Website",
-      year: p.year ?? new Date().getFullYear(),
+      year: p.year ?? currentYear(),
       summary: p.summary ?? "",
       content: p.content ?? "",
       tags: p.tags ?? "",
-      coverColor: p.coverColor ?? "#6d5efc",
+      coverColor: p.coverColor ?? DEFAULT_COVER,
       imageUrl: p.imageUrl ?? null,
       liveUrl: p.liveUrl ?? null,
       featured: !!p.featured,

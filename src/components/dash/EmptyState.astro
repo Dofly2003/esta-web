@@ -1,0 +1,38 @@
+---
+// Empty state: ikon (lingkaran 40px) + judul + teks opsional + slot "actions" (tombol; isi slot hanya bila ada).
+// Versi halaman di tengah, teks maks. 44ch. compact → varian ringkas di dalam panel / kolom
+// (tanpa bingkai, tanpa ikon, judul teks biasa).
+import Icon, { type IconName } from "./Icon.astro";
+
+interface Props {
+  title: string;
+  text?: string;
+  /** kelas paragraf teks, mis. "small" */
+  textClass?: string;
+  compact?: boolean;
+  /** ikon versi halaman (default "info") */
+  icon?: IconName;
+  class?: string;
+  [attr: string]: unknown;
+}
+const { title, text, textClass, compact = false, icon = "info", class: cls, ...attrs } = Astro.props;
+---
+
+<div class:list={["empty", compact && "is-compact", cls]} {...attrs}>
+  {
+    !compact && (
+      <span class="empty-ic" aria-hidden="true">
+        <Icon name={icon} />
+      </span>
+    )
+  }
+  <p class:list={[!compact && "h3"]}>{title}</p>
+  {text && <p class={textClass}>{text}</p>}
+  {
+    Astro.slots.has("actions") && (
+      <div class="actions">
+        <slot name="actions" />
+      </div>
+    )
+  }
+</div>

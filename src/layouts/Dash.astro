@@ -1,73 +1,316 @@
 ---
+// Shell dashboard tim: sidebar (brand, navigasi, tema, akun) + top bar
+// (breadcrumb + slot "actions") + area konten. Sistem desain: src/styles/dashboard.css
 import Base from "./Base.astro";
-import Logo from "../components/Logo.astro";
+import Brand from "../components/dash/Brand.astro";
+import Notice from "../components/dash/Notice.astro";
+import Icon, { type IconName } from "../components/dash/Icon.astro";
+import NavItem from "../components/dash/NavItem.astro";
+import Avatar from "../components/dash/Avatar.astro";
+import ThemeScript from "../components/dash/ThemeScript.astro";
 import { api } from "../lib/api";
-import { initials } from "@shared/format";
 import { ROLES } from "@shared/constants";
+import { readFlash } from "@shared/messages";
+import type { NavSummary } from "@shared/types";
 
+type Crumb = { label: string; href?: string };
 interface Props {
+  /** judul tab browser */
   title: string;
+  /** breadcrumb tambahan setelah "Ringkasan / <bagian>", mis. [{ label: project.name }] */
+  trail?: Crumb[];
+  /** kode ?err= yang halaman ini sudah tampilkan di samping field-nya: tidak diulang di flash atas */
+  inlineErrors?: readonly (string | null | undefined)[];
 }
-const { title } = Astro.props;
+const { title, trail = [], inlineErrors = [] } = Astro.props;
 const user = Astro.locals.user!;
-const { newInquiries } = await api<{ newInquiries: number }>(Astro, "/api/nav");
+const { newInquiries } = await api<NavSummary>(Astro, "/api/nav");
 const path = Astro.url.pathname;
-const ok = Astro.url.searchParams.get("ok");
-const err = Astro.url.searchParams.get("err");
+// pesan flash dari redirect API (?ok=<kode> / ?err=<kode>); hanya kode yang dikenal, teks dari shared/messages.ts.
+// Menempel di bawah top bar; tombol tutup = URL yang sama tanpa ?ok/?err (forms.ts juga menghapusnya dari URL).
+const flash = readFlash(Astro.url);
+const errInline = inlineErrors.includes(Astro.url.searchParams.get("err") ?? "");
+const flashes = [
+  { kind: "ok", text: flash.ok, tone: "ok" as const },
+  { kind: "err", text: errInline ? null : flash.err, tone: "crit" as const },
+].filter((f) => f.text);
 
-const links = [
-  { href: "/dashboard", label: "Ringkasan", icon: "▦" },
-  { href: "/dashboard/projects", label: "Proyek", icon: "◧" },
-  { href: "/dashboard/tasks", label: "Tugas", icon: "☑" },
-  { href: "/dashboard/portfolio", label: "Portofolio", icon: "◈" },
-  { href: "/dashboard/inbox", label: "Inbox", icon: "✉", badge: newInquiries },
-  { href: "/dashboard/team", label: "Tim & Akun", icon: "◎" },
+const links: { href: string; label: string; icon: IconName; count?: number; countSr?: string; go?: string }[] = [
+  { href: "/dashboard", label: "Ringkasan", icon: "home" },
+  { href: "/dashboard/projects", label: "Proyek", icon: "folder" },
+  { href: "/dashboard/tasks", label: "Tugas", icon: "task" },
+  { href: "/dashboard/portfolio", label: "Portofolio", icon: "grid" },
+  // ada inquiry baru → tautan langsung ke "Baru" (triase); selain itu semua
+  {
+    href: "/dashboard/inbox",
+    label: "Inbox",
+    icon: "inbox",
+    count: newInquiries,
+    countSr: `${newInquiries} inquiry baru`,
+    go: newInquiries > 0 ? "/dashboard/inbox?status=NEW" : undefined,
+  },
+  // beban kerja tim = pekerjaan harian, jadi di navigasi utama (bukan di "Pengaturan")
+  { href: "/dashboard/team", label: "Tim & Akun", icon: "users" },
 ];
-const active = (href: string) => (href === "/dashboard" ? path === href : path.startsWith(href));
+const isActive = (href: string) => (href === "/dashboard" ? path === href || path === "/dashboard/" : path.startsWith(href));
+const section = links.find((l) => isActive(l.href));
+
+// Ringkasan / Bagian / sub-halaman…  (item terakhir = halaman ini). Beranda: satu crumb "Ringkasan".
+const home = section?.href === "/dashboard";
+const crumbs: Crumb[] = home ? [] : [{ label: "Ringkasan", href: "/dashboard" }];
+if (section) crumbs.push({ label: section.label, href: section.href });
+crumbs.push(...trail);
+// halaman detail (< 900px): tautan "‹ Bagian" menggantikan breadcrumb
+const up = trail.length > 0 && section ? section : null;
+
+const themes = [
+  { value: "system", label: "Sistem", icon: "monitor" as IconName },
+  { value: "dark", label: "Gelap", icon: "moon" as IconName },
+  { value: "light", label: "Terang", icon: "sun" as IconName },
+];
 ---
 
-<Base title={title}>
-  <div class="min-h-screen bg-zinc-50 text-zinc-900 lg:flex">
-    <aside class="border-b border-zinc-200 bg-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-60 lg:shrink-0 lg:flex-col lg:border-b-0 lg:border-r">
-      <div class="flex items-center justify-between px-4 py-4 lg:px-5 lg:py-6">
-        <Logo href="/dashboard" size="sm" dark={false} />
-        <a href="/" target="_blank" class="text-xs text-zinc-500 hover:text-accent lg:hidden">Lihat web ↗</a>
-      </div>
-      <nav class="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-col lg:overflow-visible lg:pb-0">
-        {
-          links.map((l) => (
-            <a
-              href={l.href}
-              class:list={[
-                "flex shrink-0 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition",
-                active(l.href) ? "bg-accent/10 text-accent" : "text-zinc-600 hover:bg-zinc-100",
-              ]}
-            >
-              <span class="w-4 text-center opacity-70">{l.icon}</span>
-              {l.label}
-              {!!l.badge && <span class="ml-auto rounded-full bg-accent px-1.5 text-[10px] font-bold text-white">{l.badge}</span>}
+<Base title={title} dash>
+  <ThemeScript slot="head" />
+
+  <a class="skip" href="#main">Langsung ke konten</a>
+  <div class="backdrop" id="dash-backdrop" hidden></div>
+  <div class="app">
+    <aside class="app-side" id="dash-side" aria-label="Menu dashboard">
+      {/* tanpa JS: latar redup di belakang sidebar yang terbuka (:target); mengetuknya menutup menu */}
+      <a href="#main" class="side-scrim nojs-only" tabindex="-1" aria-hidden="true"></a>
+      <div class="side">
+        <div class="side-head">
+          <a href="/dashboard" class="side-head-link">
+            <Brand sub="Dashboard tim" />
+          </a>
+          <button class="btn-icon side-close js-only" type="button" aria-label="Tutup menu" data-drawer-close>
+            <Icon name="x" />
+          </button>
+          {/* tanpa JS: sidebar terbuka lewat :target (#dash-side), tutup = pindah ke #main */}
+          <a href="#main" class="btn-icon side-close nojs-only" aria-label="Tutup menu">
+            <Icon name="x" />
+          </a>
+        </div>
+
+        <nav aria-label="Halaman dashboard">
+          <ul class="nav">
+            {
+              links.map(({ go, ...l }) => <NavItem {...l} href={go ?? l.href} current={isActive(l.href)} />)
+            }
+          </ul>
+        </nav>
+
+        <div class="side-group" role="group" aria-labelledby="dash-acc-l">
+          <span class="side-label" id="dash-acc-l">Lainnya</span>
+          <ul class="nav">
+            <NavItem href="/" label="Lihat website publik" icon="external" external />
+          </ul>
+        </div>
+
+        <div class="side-foot">
+          {/* tema hanya bisa diganti dengan JS (localStorage): tanpa JS barisnya disembunyikan */}
+          <div class="foot-row theme-row js-only">
+            <span class="side-label" id="dash-theme-l">Tema</span>
+            <div class="theme-sw" role="radiogroup" aria-labelledby="dash-theme-l" data-theme-sw>
+              {
+                themes.map((t, i) => (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={i === 0 ? "true" : "false"}
+                    aria-label={t.label}
+                    title={t.label}
+                    tabindex={i === 0 ? 0 : -1}
+                    data-theme-value={t.value}
+                  >
+                    <Icon name={t.icon} />
+                  </button>
+                ))
+              }
+            </div>
+          </div>
+          <div class="foot-row">
+            <a href="/dashboard/team#h-pass" class="me" data-focus="#pw-current" title="Akun saya: ganti password">
+              <Avatar name={user.name} decorative />
+              <span class="me-text">
+                <span class="me-name">{user.name}</span>
+                <span class="me-role">{ROLES[user.role]}<span class="vh"> · Akun saya, ganti password</span></span>
+              </span>
             </a>
-          ))
-        }
-      </nav>
-      <div class="hidden border-t border-zinc-200 p-4 lg:mt-auto lg:block">
-        <a href="/" target="_blank" class="mb-4 block text-xs text-zinc-500 hover:text-accent">Lihat website publik ↗</a>
-        <div class="flex items-center gap-3">
-          <span class="grid h-9 w-9 place-items-center rounded-full bg-accent/10 text-xs font-bold text-accent">{initials(user.name)}</span>
-          <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-semibold">{user.name}</p>
-            <p class="text-xs text-zinc-500">{ROLES[user.role]}</p>
+            <form method="post" action="/api/auth/logout">
+              <button type="submit" class="btn btn-quiet btn-sm">
+                <Icon name="logout" class="ic-sm" />Keluar
+              </button>
+            </form>
           </div>
         </div>
-        <form method="post" action="/api/auth/logout" class="mt-3">
-          <button class="w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-500 hover:bg-zinc-100">Keluar</button>
-        </form>
       </div>
     </aside>
-    <main class="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
-      {ok && <p class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">✓ {ok}</p>}
-      {err && <p class="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">⚠ {err}</p>}
-      <slot />
-    </main>
+
+    <div class="main-col" id="dash-main-col">
+      <header class="top">
+        <button
+          class="btn-icon bordered menu-btn js-only"
+          type="button"
+          aria-label="Buka menu"
+          aria-expanded="false"
+          aria-controls="dash-side"
+          data-drawer-open
+        >
+          <Icon name="menu" />
+        </button>
+        <a href="#dash-side" class="btn-icon bordered menu-btn nojs-only" aria-label="Buka menu">
+          <Icon name="menu" />
+        </a>
+        {
+          up && (
+            <a href={up.href} class="crumb-up">
+              <Icon name="arrow-l" class="ic-sm" />
+              {up.label}
+              <span class="vh">: kembali ke daftar</span>
+            </a>
+          )
+        }
+        <nav class="crumbs" aria-label="Breadcrumb">
+          <ol>
+            {
+              crumbs.map((c, i) => {
+                const last = i === crumbs.length - 1;
+                return (
+                  <li>
+                    {last ? (
+                      <span class="c" aria-current="page">
+                        {c.label}
+                      </span>
+                    ) : c.href ? (
+                      <a href={c.href}>{c.label}</a>
+                    ) : (
+                      <span class="c">{c.label}</span>
+                    )}
+                    {!last && <Icon name="chev-r" />}
+                  </li>
+                );
+              })
+            }
+          </ol>
+        </nav>
+        {
+          Astro.slots.has("actions") && (
+            <div class="top-tools">
+              <slot name="actions" />
+            </div>
+          )
+        }
+      </header>
+
+      <main id="main" tabindex="-1">
+        <div class="view">
+          {
+            flashes.length > 0 && (
+              <div class="flash-wrap">
+                {flashes.map((f) => (
+                  <Notice tone={f.tone} class="flash" data-flash={f.kind}>
+                    {f.text}
+                    {/* kotak centang: tanpa JS pesan disembunyikan lewat CSS :has() (tanpa memuat ulang, #anchor tetap) */}
+                    <label slot="end" class="btn-icon flash-x" title="Tutup pesan" data-flash-close>
+                      <input type="checkbox" class="vh" aria-label="Tutup pesan" />
+                      <Icon name="x" />
+                    </label>
+                  </Notice>
+                ))}
+              </div>
+            )
+          }
+          <slot />
+        </div>
+      </main>
+    </div>
   </div>
 </Base>
+
+<script>
+  import { enhance } from "../components/dash/forms";
+  enhance();
+
+  // Kembali lewat tombol Back dari cache (bfcache): muat ulang supaya sesi dicek lagi (mis. setelah Keluar).
+  // Halaman dashboard dikirim dengan Cache-Control: no-store, jadi ini hanya jaring pengaman.
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) location.reload();
+  });
+
+  // ---- tema: tombol Sistem / Gelap / Terang (radiogroup, panah kiri/kanan) ----
+  type ThemeApi = { get(): string; set(t: string): string };
+  const theme = (window as unknown as { EstaTheme?: ThemeApi }).EstaTheme;
+  const sw = document.querySelector<HTMLElement>("[data-theme-sw]");
+  if (sw && theme) {
+    const btns = Array.from(sw.querySelectorAll<HTMLButtonElement>("[data-theme-value]"));
+    const sync = () => {
+      const cur = theme.get();
+      for (const b of btns) {
+        const on = b.dataset.themeValue === cur;
+        b.setAttribute("aria-checked", String(on));
+        b.tabIndex = on ? 0 : -1;
+      }
+    };
+    sync();
+    for (const b of btns) b.addEventListener("click", () => (theme.set(b.dataset.themeValue!), sync()));
+    sw.addEventListener("keydown", (e) => {
+      const i = btns.findIndex((b) => b.getAttribute("aria-checked") === "true");
+      const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+      if (!step) return;
+      e.preventDefault();
+      const next = btns[(i + step + btns.length) % btns.length];
+      theme.set(next.dataset.themeValue!);
+      sync();
+      next.focus();
+    });
+  }
+
+  // ---- drawer sidebar (< 900px) ----
+  const side = document.getElementById("dash-side");
+  const backdrop = document.getElementById("dash-backdrop");
+  const mainCol = document.getElementById("dash-main-col");
+  const openBtn = document.querySelector<HTMLButtonElement>("[data-drawer-open]");
+  const closeBtn = document.querySelector<HTMLButtonElement>("[data-drawer-close]");
+  const mobile = window.matchMedia("(max-width: 899px)");
+  const skip = document.querySelector<HTMLElement>(".skip");
+  const isOpen = () => !!side?.classList.contains("open");
+  const setDrawer = (open: boolean, restoreFocus = true) => {
+    if (!side || !backdrop || !mainCol) return;
+    side.classList.toggle("open", open);
+    backdrop.hidden = !open;
+    openBtn?.setAttribute("aria-expanded", String(open));
+    // latar tidak bisa difokus (inert, termasuk skip link) dan tidak ikut menggulir
+    document.documentElement.classList.toggle("drawer-open", open);
+    for (const el of [mainCol, skip]) el?.toggleAttribute("inert", open);
+    if (open) {
+      setTimeout(() => side.querySelector<HTMLElement>('[aria-current="page"], a, button')?.focus(), 60);
+    } else if (restoreFocus) openBtn?.focus();
+  };
+  openBtn?.addEventListener("click", () => setDrawer(true));
+  closeBtn?.addEventListener("click", () => setDrawer(false));
+  backdrop?.addEventListener("click", () => setDrawer(false));
+  document.addEventListener("keydown", (e) => {
+    if (!isOpen() || !side) return;
+    if (e.key === "Escape") return setDrawer(false);
+    if (e.key !== "Tab") return;
+    // fokus berputar di dalam drawer
+    const items = Array.from(side.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex="0"]')).filter(
+      (el) => el.offsetParent !== null,
+    );
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (!first || !last) return;
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+  mobile.addEventListener("change", (e) => {
+    if (!e.matches && side?.classList.contains("open")) setDrawer(false, false);
+  });
+</script>

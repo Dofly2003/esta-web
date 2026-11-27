@@ -1,0 +1,51 @@
+---
+// Field form: <div class="field"> + <label for> + kontrol (slot default) + error opsional.
+//   required → tanda * (aria-hidden) + "(wajib)" untuk pembaca layar; kontrolnya tetap butuh atribut required
+//   hint     → <span class="opt"> di belakang label, mis. "(opsional)"
+//   error    → <p class="err" id="{id}-err"> di bawah kontrol; beri kontrolnya
+//              aria-invalid="true" aria-describedby="{id}-err" (helper invalid() di ui.ts)
+//   labelClass → mis. "vh" bila label terlihat sudah ada di tempat lain
+import Icon from "./Icon.astro";
+
+interface Props {
+  id: string;
+  label: string;
+  required?: boolean;
+  hint?: string;
+  error?: string | null;
+  class?: string;
+  labelClass?: string;
+  [attr: string]: unknown;
+}
+const { id, label, required = false, hint, error, class: cls, labelClass, ...attrs } = Astro.props;
+---
+
+<div class:list={["field", cls]} {...attrs}>
+  <label for={id} class={labelClass}
+    >{label}{
+      required && (
+        <>
+          {" "}
+          <span aria-hidden="true">*</span>
+          <span class="vh">(wajib)</span>
+        </>
+      )
+    }{
+      hint && (
+        <>
+          {" "}
+          <span class="opt">{hint}</span>
+        </>
+      )
+    }</label
+  >
+  <slot />
+  {
+    error && (
+      <p class="err" id={`${id}-err`}>
+        <Icon name="alert" class="ic-sm" />
+        <span>{error}</span>
+      </p>
+    )
+  }
+</div>

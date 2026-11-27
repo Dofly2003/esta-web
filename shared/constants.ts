@@ -1,3 +1,6 @@
+/** Zona waktu studio: "hari ini", deadline lewat, dan tanggal tampil selalu memakai WIB, apa pun TZ server */
+export const APP_TZ = "Asia/Jakarta";
+
 export const BRAND = {
   name: "ESTA Studio",
   tagline: "Website & Software Studio",
@@ -12,7 +15,10 @@ export const BRAND = {
   linkedin: "https://linkedin.com/",
 };
 
-type Option = { label: string; cls: string };
+/** Nada status dashboard (kelas .tone-* di src/styles/dashboard.css). Merah (crit) hanya untuk lewat deadline / error. */
+export type Tone = "neutral" | "info" | "accent" | "warn" | "ok" | "crit";
+// cls = kelas nada status dashboard ("tone-" + Tone)
+type Option = { label: string; cls: `tone-${Tone}` };
 
 export const PROJECT_TYPES: Record<string, string> = {
   WEBSITE: "Website",
@@ -23,37 +29,72 @@ export const PROJECT_TYPES: Record<string, string> = {
 };
 
 export const PROJECT_STATUS: Record<string, Option> = {
-  PLANNING: { label: "Perencanaan", cls: "bg-slate-100 text-slate-700" },
-  IN_PROGRESS: { label: "Dikerjakan", cls: "bg-blue-100 text-blue-700" },
-  REVIEW: { label: "Review Klien", cls: "bg-amber-100 text-amber-800" },
-  DONE: { label: "Selesai", cls: "bg-emerald-100 text-emerald-700" },
-  ON_HOLD: { label: "Ditunda", cls: "bg-rose-100 text-rose-700" },
+  PLANNING: { label: "Perencanaan", cls: "tone-neutral" },
+  IN_PROGRESS: { label: "Dikerjakan", cls: "tone-info" },
+  // ungu = menunggu review (satu-satunya arti ungu); amber hanya "perlu perhatian"
+  REVIEW: { label: "Review Klien", cls: "tone-accent" },
+  DONE: { label: "Selesai", cls: "tone-ok" },
+  ON_HOLD: { label: "Ditunda", cls: "tone-neutral" },
 };
 
+/** Status proyek yang masih berjalan (dihitung di ringkasan, filter `status=ACTIVE`, beban kerja) */
+export const ACTIVE_PROJECT_STATUSES: readonly string[] = ["PLANNING", "IN_PROGRESS", "REVIEW"];
+export const isActiveProject = (p: { status: string }) => ACTIVE_PROJECT_STATUSES.includes(p.status);
+
 export const TASK_STATUS: Record<string, Option> = {
-  TODO: { label: "To Do", cls: "bg-slate-100 text-slate-700" },
-  IN_PROGRESS: { label: "Dikerjakan", cls: "bg-blue-100 text-blue-700" },
-  REVIEW: { label: "Review", cls: "bg-amber-100 text-amber-800" },
-  DONE: { label: "Selesai", cls: "bg-emerald-100 text-emerald-700" },
+  TODO: { label: "Belum mulai", cls: "tone-neutral" },
+  IN_PROGRESS: { label: "Dikerjakan", cls: "tone-info" },
+  REVIEW: { label: "Review", cls: "tone-accent" },
+  DONE: { label: "Selesai", cls: "tone-ok" },
 };
 
 export const PRIORITY: Record<string, Option> = {
-  LOW: { label: "Rendah", cls: "bg-slate-100 text-slate-600" },
-  MEDIUM: { label: "Sedang", cls: "bg-violet-100 text-violet-700" },
-  HIGH: { label: "Tinggi", cls: "bg-rose-100 text-rose-700" },
+  LOW: { label: "Rendah", cls: "tone-neutral" },
+  // hanya Tinggi berwarna (amber = perlu perhatian)
+  MEDIUM: { label: "Sedang", cls: "tone-neutral" },
+  HIGH: { label: "Tinggi", cls: "tone-warn" },
 };
 
+/** Status inquiry yang bisa dipilih. "Selesai" (CLOSED) dipecah jadi Jadi proyek / Tidak lanjut; kolom status
+ * berupa teks, jadi tanpa migrasi: baris lama berstatus CLOSED tetap terbaca lewat INQUIRY_STATUS_LEGACY. */
 export const INQUIRY_STATUS: Record<string, Option> = {
-  NEW: { label: "Baru", cls: "bg-blue-100 text-blue-700" },
-  CONTACTED: { label: "Dihubungi", cls: "bg-amber-100 text-amber-800" },
-  CLOSED: { label: "Selesai", cls: "bg-emerald-100 text-emerald-700" },
+  NEW: { label: "Baru", cls: "tone-info" },
+  CONTACTED: { label: "Dihubungi", cls: "tone-neutral" },
+  WON: { label: "Jadi proyek", cls: "tone-ok" },
+  LOST: { label: "Tidak lanjut", cls: "tone-neutral" },
 };
+/** Status lama yang masih bisa ada di data (tidak ditawarkan untuk dipilih, kecuali di baris yang sudah memakainya) */
+export const INQUIRY_STATUS_LEGACY: Record<string, Option> = {
+  CLOSED: { label: "Selesai", cls: "tone-neutral" },
+};
+export const INQUIRY_STATUS_ALL: Record<string, Option> = { ...INQUIRY_STATUS, ...INQUIRY_STATUS_LEGACY };
+/** Janji di website: dibalas maks. 1×24 jam (jam, bukan hari kalender) */
+export const REPLY_WITHIN_HOURS = 24;
 
 export const ROLES: Record<string, string> = { ADMIN: "Admin", MEMBER: "Anggota" };
+export const isAdmin = (u: { role: string }) => u.role === "ADMIN";
+
+/** Label dari peta di atas; kunci yang tidak dikenal ditampilkan apa adanya */
+export function labelOf(map: Record<string, string | Option>, key: string) {
+  const v = map[key];
+  if (v == null) return key;
+  return typeof v === "string" ? v : v.label;
+}
+
+export const MIN_PASSWORD = 8;
+
+/** Beranda hanya menampilkan sekian karya unggulan pertama (urutan terkecil) */
+export const MAX_FEATURED = 6;
+/** Batas baris saat menempel daftar tugas (satu baris = satu tugas) */
+export const MAX_TASK_LINES = 30;
 
 export const PORTFOLIO_CATEGORIES = ["Website", "Web App", "Mobile App", "UI/UX"];
+/** Kategori portofolio yang valid, selain itu "Website" */
+export const portfolioCategory = (v: string) => (PORTFOLIO_CATEGORIES.includes(v) ? v : "Website");
+/** Warna sampul karya bawaan (sama dengan default kolom cover_color di database) */
+export const DEFAULT_COVER = "#6d5efc";
 
-export type Service = { title: string; group: "website" | "software" };
+type Service = { title: string; group: "website" | "software" };
 
 export const SERVICE_GROUPS = {
   website: {

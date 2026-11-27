@@ -1,5 +1,4 @@
 import { defineConfig, passthroughImageService } from "astro/config";
-import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 import bunAdapter from "./adapter/index.mjs";
 
@@ -8,8 +7,6 @@ const apiPort = process.env.API_PORT || 3001;
 export default defineConfig({
   output: "server",
   adapter: bunAdapter(),
-  // Komponen interaktif bisa ditulis dengan React (dan framework lain: tambahkan @astrojs/vue / svelte)
-  integrations: [react()],
   // Form dikirim ke backend Bun (/api), bukan ke halaman Astro
   security: { checkOrigin: false },
   server: { port: 4321 },

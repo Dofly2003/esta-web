@@ -1,0 +1,35 @@
+---
+// Satu tautan navigasi sidebar (<li><a class="nav-item">). count → angka + teks pembaca layar;
+// external → buka di tab baru (+ "(tab baru)" untuk pembaca layar).
+import Icon, { type IconName } from "./Icon.astro";
+import { current as cur, externalAttrs } from "./ui";
+
+interface Props {
+  href: string;
+  label: string;
+  icon: IconName;
+  current?: boolean;
+  count?: number;
+  countSr?: string;
+  external?: boolean;
+  class?: string;
+}
+const { href, label, icon, current = false, count, countSr, external = false, class: cls } = Astro.props;
+---
+
+<li>
+  <a class:list={["nav-item", cls]} href={href} aria-current={cur(current, "page")} {...(external ? externalAttrs : {})}>
+    <Icon name={icon} />
+    <span class="nav-label">{label}</span>
+    {
+      !!count && (
+        <span class="nav-count">
+          <span class="dot tone-info" aria-hidden="true" />
+          <span aria-hidden="true">{count}</span>
+          <span class="vh">, {countSr}</span>
+        </span>
+      )
+    }
+    {external && <span class="vh"> (tab baru)</span>}
+  </a>
+</li>

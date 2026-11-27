@@ -1,0 +1,41 @@
+---
+// Filter bersegmen (tautan): <div class="seg" role="group"> + <a aria-current="true"> untuk yang aktif.
+// Item boleh punya ikon (di depan label), hitungan .seg-n (di belakang label; countSr = teks pembaca layar)
+// dan title (mis. kepanjangan singkatan). Selalu satu baris: bila sempit digulir mendatar dengan pudar di tepi
+// (forms.ts); di bawah 900px selebar baris .filters dengan segmen dibagi rata.
+import Icon, { type IconName } from "./Icon.astro";
+import { current } from "./ui";
+
+interface Item {
+  href: string;
+  label: string;
+  current: boolean;
+  count?: number;
+  countSr?: string;
+  icon?: IconName;
+  title?: string;
+}
+interface Props {
+  label: string;
+  items: Item[];
+  class?: string;
+}
+const { label, items, class: cls } = Astro.props;
+---
+
+<div class:list={["seg", cls]} role="group" aria-label={label}>
+  {
+    items.map((i) => (
+      <a href={i.href} aria-current={current(i.current)} title={i.title}>
+        {i.icon && <Icon name={i.icon} class="ic-sm" />}
+        {i.label}
+        {i.count != null && (
+          <span class="seg-n num">
+            {i.count}
+            {i.countSr && <span class="vh"> {i.countSr}</span>}
+          </span>
+        )}
+      </a>
+    ))
+  }
+</div>

@@ -1,0 +1,20 @@
+---
+// Panel bergaris: <section class="panel"> + .panel-head (h2.h3 + slot "head", mis. <p class="cap">).
+// Isi panel (.panel-body / .panel-foot / form) = slot default. Atribut lain diteruskan ke <section>.
+interface Props {
+  /** id judul, dipakai untuk aria-labelledby (dan target #anchor) */
+  id: string;
+  title: string;
+  class?: string;
+  [attr: string]: unknown;
+}
+const { id, title, class: cls, ...attrs } = Astro.props;
+---
+
+<section class:list={["panel", cls]} aria-labelledby={id} {...attrs}>
+  <div class="panel-head">
+    <h2 class="h3" id={id}>{title}</h2>
+    <slot name="head" />
+  </div>
+  <slot />
+</section>

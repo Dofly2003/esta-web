@@ -1,0 +1,106 @@
+---
+// Isi halaman detail karya (dipakai /portfolio/[slug] dan pratinjau draf di dashboard).
+import Cover from "./Cover.astro";
+import PortfolioCard from "./PortfolioCard.astro";
+import RollButton from "./RollButton.astro";
+import type { PortfolioItem } from "@shared/types";
+
+interface Props {
+  item: PortfolioItem;
+  others: PortfolioItem[];
+}
+const { item, others } = Astro.props;
+const tags = item.tags
+  .split(",")
+  .map((t) => t.trim())
+  .filter(Boolean);
+const paragraphs = item.content.split(/\n\s*\n/).filter(Boolean);
+const meta = [
+  { k: "Klien", v: item.client || "—" },
+  { k: "Kategori", v: item.category },
+  { k: "Tahun", v: String(item.year) },
+];
+---
+
+<article>
+  <section data-hero data-section class="grid-bg bg-ink">
+    <div class="container-x pt-36 pb-14">
+      <a href="/portfolio" class="mono text-white/60 hover:text-white">◂ Semua karya</a>
+      <h1 data-heading class="mt-10 max-w-5xl text-[clamp(2.75rem,7vw,6rem)] leading-[0.98] tracking-[-0.06em]">
+        <span data-hl-line class="hl hl-sans box-decoration-clone whitespace-normal">{item.title}</span>
+      </h1>
+      {item.summary && <p data-fade class="mt-8 max-w-2xl text-lg leading-relaxed text-white/70">{item.summary}</p>}
+    </div>
+  </section>
+
+  <section data-section class="bg-ink">
+    <div class="container-x">
+      <!-- garis antar sel dari gap-px di atas latar garis; sel "Link" hanya muncul jika ada -->
+      <dl
+        data-fade
+        class:list={["grid gap-px border border-white/10 bg-white/10", item.liveUrl ? "grid-cols-2 md:grid-cols-4" : "grid-cols-3"]}
+      >
+        {
+          meta.map((m) => (
+            <div class="bg-ink p-5">
+              <dt class="mono-dim text-[11px]">[ {m.k} ]</dt>
+              <dd class="mt-2 text-lg tracking-[-0.03em]">{m.v}</dd>
+            </div>
+          ))
+        }
+        {
+          item.liveUrl && (
+            <div class="bg-ink p-5">
+              <dt class="mono-dim text-[11px]">[ Link ]</dt>
+              <dd class="mt-2 text-lg tracking-[-0.03em]">
+                <a href={item.liveUrl} target="_blank" rel="noreferrer" class="text-sky hover:underline">
+                  Kunjungi ↗
+                </a>
+              </dd>
+            </div>
+          )
+        }
+      </dl>
+
+      <div data-fade class="mt-4 aspect-[16/9] overflow-hidden border border-white/10"><Cover item={item} /></div>
+
+      <div class="grid gap-12 py-20 md:grid-cols-[1.6fr_1fr]">
+        <div data-fade class="space-y-5 text-[16px] leading-relaxed text-white/75">
+          {paragraphs.length ? paragraphs.map((p) => <p>{p}</p>) : <p class="mono-dim">[ Studi kasus lengkap segera ditambahkan ]</p>}
+        </div>
+        <!-- CTA selalu tampil; daftar tag hanya jika ada -->
+        <div data-fade>
+          {
+            tags.length > 0 && (
+              <>
+                <p class="mono-dim">[ Teknologi & lingkup ]</p>
+                <ul class="mt-4 mb-10 flex flex-wrap gap-1.5">
+                  {tags.map((t) => (
+                    <li class="mono bg-white px-2 py-1 text-[11px] text-ink"># {t}</li>
+                  ))}
+                </ul>
+              </>
+            )
+          }
+          <p class="mono-dim">[ Punya kebutuhan serupa? ]</p>
+          <div class="mt-4"><RollButton href="/contact" label="Buat yang serupa" /></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {
+    others.length > 0 && (
+      <section data-section class="border-t border-white/10 bg-ink">
+        <div class="container-x py-20">
+          <h2 class="mono-dim">-- Karya lainnya.</h2>
+          <div data-stagger class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {others.map((o, i) => (
+              <PortfolioCard item={o} index={i} />
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+</article>

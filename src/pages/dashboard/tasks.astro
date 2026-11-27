@@ -1,54 +1,297 @@
 ---
 import Dash from "../../layouts/Dash.astro";
 import PageHeader from "../../components/dash/PageHeader.astro";
+import Icon from "../../components/dash/Icon.astro";
 import TaskCard from "../../components/dash/TaskCard.astro";
-import { pill } from "../../components/dash/ui";
-import { api } from "../../lib/api";
-import { TASK_STATUS } from "@shared/constants";
-import type { TaskWithRefs, User } from "@shared/types";
+import SegFilter from "../../components/dash/SegFilter.astro";
+import EmptyState from "../../components/dash/EmptyState.astro";
+import Disclosure from "../../components/dash/Disclosure.astro";
+import Field from "../../components/dash/Field.astro";
+import Options from "../../components/dash/Options.astro";
+import Notice from "../../components/dash/Notice.astro";
+import { errIn, here, invalid, withLoad } from "../../components/dash/ui";
+import { api, apiPath } from "../../lib/api";
+import { MAX_TASK_LINES, PRIORITY, TASK_STATUS } from "@shared/constants";
+import { ERR, type ErrCode } from "@shared/messages";
+import { isDone } from "@shared/format";
+import type { ProjectsResponse, TasksResponse } from "@shared/types";
 
-const all = Astro.url.searchParams.get("filter") === "all";
-const showDone = Astro.url.searchParams.get("done") === "1";
-const { tasks, users } = await api<{ tasks: TaskWithRefs[]; users: User[] }>(
-  Astro,
-  `/api/tasks?filter=${all ? "all" : "mine"}&done=${showDone ? 1 : 0}`,
-);
-const link = (f: boolean, d: boolean) => `/dashboard/tasks?${f ? "filter=all&" : ""}${d ? "done=1" : ""}`;
-const columns = Object.entries(TASK_STATUS).filter(([k]) => showDone || k !== "DONE");
+const me = Astro.locals.user!;
+const sp = Astro.url.searchParams;
+const all = sp.get("filter") === "all";
+const showDone = sp.get("done") === "1";
+// drill-down dari ringkasan / tim: due=overdue|week, assignee=none|<id>, status=<status belum selesai>
+// (hanya tugas hidup; done diabaikan)
+const due = ["overdue", "week"].includes(sp.get("due") ?? "") ? sp.get("due")! : "";
+const assignee = /^[\w-]{1,64}$/.test(sp.get("assignee") ?? "") ? sp.get("assignee")! : "";
+const status = Object.hasOwn(TASK_STATUS, sp.get("status") ?? "") && sp.get("status") !== "DONE" ? sp.get("status")! : "";
+const drill = Boolean(due || assignee || status);
+const scope = { filter: all ? "all" : "mine", assignee };
+const [{ tasks, users, counts, load }, overdueList, weekList, active] = await Promise.all([
+  api<TasksResponse>(Astro, apiPath("/api/tasks", { ...scope, done: showDone ? 1 : 0, due, status })),
+  // hitungan chip deadline untuk cakupan yang sedang dilihat (saya / tim / orang tertentu)
+  api<TasksResponse>(Astro, apiPath("/api/tasks", { ...scope, due: "overdue" })),
+  api<TasksResponse>(Astro, apiPath("/api/tasks", { ...scope, due: "week" })),
+  api<ProjectsResponse>(Astro, "/api/projects?status=ACTIVE"),
+]);
+
+// tautan filter yang mempertahankan filter lain
+const cur = { filter: all ? "all" : "", done: showDone && !drill ? "1" : "", due, assignee, status };
+const link = (p: Partial<typeof cur>) => apiPath("/dashboard/tasks", { ...cur, ...p });
+const person = assignee && assignee !== "none" ? users.find((u) => u.id === assignee) : null;
+// assignee=<id> yang tidak dikenal (mis. akun sudah dihapus)
+const unknownPerson = Boolean(assignee && assignee !== "none" && !person);
+
+const whoItems = [
+  { href: link({ filter: "", assignee: "" }), label: "Tugas saya", current: !all && !assignee },
+  { href: link({ filter: "all", assignee: "" }), label: "Semua tim", current: all && !assignee },
+  {
+    href: link({ filter: "all", assignee: "none", done: "" }),
+    label: "Tanpa PJ",
+    title: "Tanpa penanggung jawab",
+    count: counts.unassigned,
+    countSr: "tugas",
+    current: assignee === "none",
+  },
+  ...(person ? [{ href: link({}), label: person.name, current: true }] : []),
+];
+// label pendek (konteks "Deadline" dari nama grup) supaya muat satu baris di ponsel
+const dueItems = [
+  { href: link({ due: "" }), label: "Semua", title: "Semua deadline", current: !due },
+  { href: link({ due: "overdue", done: "" }), label: "Lewat", title: "Lewat deadline", count: overdueList.tasks.length, countSr: "tugas lewat deadline", current: due === "overdue" },
+  { href: link({ due: "week", done: "" }), label: "7 hari", title: "Deadline 7 hari ke depan", count: weekList.tasks.length, countSr: "tugas deadline 7 hari ke depan", current: due === "week" },
+];
+const columns = Object.entries(TASK_STATUS).filter(([k]) => (status ? k === status : (showDone && !drill) || k !== "DONE"));
+const nDone = tasks.filter(isDone).length;
+const nOpen = tasks.length - nDone;
+const scopeLabel = person ? person.name : assignee === "none" ? "tanpa penanggung jawab" : unknownPerson ? "anggota tidak ditemukan" : all ? "tim" : "saya";
+const emptyTitle = unknownPerson
+  ? "Anggota tidak ditemukan."
+  : due === "overdue"
+    ? "Tidak ada tugas lewat deadline."
+    : due === "week"
+      ? "Tidak ada tugas dengan deadline 7 hari ke depan."
+      : status
+        ? `Tidak ada tugas berstatus ${TASK_STATUS[status]!.label}.`
+        : !all && !assignee
+          ? "Tidak ada tugas untuk Anda."
+          : "Tidak ada tugas.";
+
+// tambah tugas cepat (pilih proyek berjalan); error validasi kembali ke form ini (#tambah-tugas)
+const ADD_ERRS = ["task-title-required", "task-too-many", "task-date-invalid", "project-not-found"] as const;
+const addErr = errIn(Astro.url, ADD_ERRS);
+const titleErr = addErr === "task-title-required" || addErr === "task-too-many" ? ERR[addErr as ErrCode] : null;
+const addBack = here(Astro.url, "tambah-tugas");
+// baru ditambah dari sini (?baru=<id tugas>&proyek=<id>): bila tidak tampil di filter ini, beri tautan ke tugasnya
+const baru = /^[\w-]{1,64}$/.test(sp.get("baru") ?? "") ? sp.get("baru")! : "";
+const baruProject = /^[\w-]{1,64}$/.test(sp.get("proyek") ?? "") ? sp.get("proyek")! : "";
+const baruHidden = Boolean(baru && baruProject && !tasks.some((t) => t.id === baru));
+// default PJ = saya pada cakupan "Tugas saya" (tugas baru langsung tampil di sini)
+const defaultWho = !all && !assignee ? me.id : person?.id ?? "";
 ---
 
-<Dash title="Tugas">
-  <PageHeader title="Tugas" subtitle="Todo list lintas proyek, diurutkan berdasarkan deadline." />
-  <div class="mb-6 flex flex-wrap gap-2">
-    <a href={link(false, showDone)} class={pill(!all)}>Tugas saya</a>
-    <a href={link(true, showDone)} class={pill(all)}>Semua tim</a>
-    <span class="mx-2 w-px bg-zinc-300"></span>
-    <a href={link(all, !showDone)} class={pill(showDone)}>{showDone ? "✓ Termasuk selesai" : "Tampilkan yang selesai"}</a>
-  </div>
-
+<Dash title="Tugas" inlineErrors={ADD_ERRS}>
   {
-    tasks.length === 0 ? (
-      <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">
-        Tidak ada tugas. Tambahkan tugas dari halaman detail proyek.
-      </p>
-    ) : (
-      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {columns.map(([key, col]) => {
-          const list = tasks.filter((t) => t.status === key);
-          return (
-            <section class="rounded-2xl bg-zinc-100/80 p-3">
-              <h3 class="mb-3 flex items-center gap-2 px-1 text-sm font-bold">
-                {col.label}
-                <span class="rounded-full bg-white px-2 text-xs font-semibold text-zinc-500">{list.length}</span>
-              </h3>
-              <div class="space-y-2">
-                {list.map((t) => <TaskCard task={t} users={users} showProject />)}
-                {list.length === 0 && <p class="px-1 py-4 text-center text-xs text-zinc-400">Kosong</p>}
-              </div>
-            </section>
-          );
-        })}
-      </div>
+    active.projects.length > 0 && (
+      <a slot="actions" href="#tambah-tugas" data-focus="#qt-title" class="btn btn-sm">
+        <Icon name="plus" class="ic-sm" />
+        Tambah tugas
+      </a>
     )
   }
+  <PageHeader title="Tugas" subtitle="Dikelompokkan per status; deadline terdekat di atas." />
+
+  <div class="stack">
+    {
+      baruHidden && (
+        <Notice tone="info" data-new-task-note>
+          Tugas baru tidak termasuk filter yang sedang dilihat.{" "}
+          <a href={`/dashboard/projects/${baruProject}#task-${baru}`} class="link">
+            Lihat tugasnya di proyek
+          </a>
+        </Notice>
+      )
+    }
+    {
+      active.projects.length > 0 && (
+        <Disclosure icon="plus" label="Tambah tugas" id="tambah-tugas" class="panel is-add" open={!!addErr || !!baru}>
+          <form
+            method="post"
+            action="/api/tasks"
+            class="pad sep add-task has-project"
+            data-keep="add-task-board"
+            data-guard
+            data-keep-ok="task-created tasks-created"
+            data-keep-fields="projectId assigneeId priority dueDate"
+          >
+            <input type="hidden" name="_back" value={addBack} />
+            <Field id="qt-title" label="Judul tugas" required class="at-title" error={titleErr}>
+              <textarea
+                id="qt-title"
+                name="title"
+                required
+                rows="1"
+                class="input"
+                autocomplete="off"
+                data-enter-submit
+                data-focus-ok="task-created tasks-created"
+                aria-describedby={titleErr ? "qt-title-err qt-title-hint" : "qt-title-hint"}
+                aria-invalid={titleErr ? "true" : undefined}
+              ></textarea>
+              <p class="cap" id="qt-title-hint">Satu baris = satu tugas; tempel daftar untuk menambah banyak sekaligus (maks. {MAX_TASK_LINES}).</p>
+            </Field>
+            <Field id="qt-project" label="Proyek" required error={addErr === "project-not-found" ? ERR[addErr] : null}>
+              <select id="qt-project" name="projectId" required class="input" {...invalid("qt-project", addErr === "project-not-found")}>
+                <option value="">Pilih proyek…</option>
+                <Options from={active.projects} />
+              </select>
+            </Field>
+            <Field id="qt-who" label="Penanggung jawab">
+              <select id="qt-who" name="assigneeId" class="input">
+                <option value="">Tanpa penanggung jawab</option>
+                <Options from={withLoad(users, load)} selected={defaultWho} />
+              </select>
+            </Field>
+            <Field id="qt-prio" label="Prioritas">
+              <select id="qt-prio" name="priority" class="input">
+                <Options from={PRIORITY} selected="MEDIUM" />
+              </select>
+            </Field>
+            <Field id="qt-due" label="Deadline" hint="(opsional)" error={addErr === "task-date-invalid" ? ERR[addErr] : null}>
+              <input id="qt-due" name="dueDate" type="date" min="2000-01-01" max="2100-12-31" class="input num" {...invalid("qt-due", addErr === "task-date-invalid")} />
+            </Field>
+            <div class="add-task-submit">
+              <button type="submit" class="btn-primary">
+                <Icon name="plus" class="ic-sm" />
+                Tambah tugas
+              </button>
+            </div>
+          </form>
+        </Disclosure>
+      )
+    }
+
+    <div class="filters" data-task-scope>
+      <SegFilter label="Penanggung jawab" items={whoItems} />
+      {
+        status && (
+          <a href={link({ status: "" })} class="btn tgl-link is-on">
+            Status: {TASK_STATUS[status]!.label}<span class="vh"> (filter aktif, klik untuk melepas)</span>
+          </a>
+        )
+      }
+      <SegFilter label="Deadline" items={dueItems} />
+      {
+        !drill && (
+          <a
+            href={link({ done: showDone ? "" : "1" })}
+            class:list={["btn tgl-link", showDone && "is-on"]}
+          >
+            <span class="tgl-box" aria-hidden="true">{showDone && <Icon name="check" />}</span>
+            Tampilkan yang selesai<span class="vh">{showDone ? " (aktif)" : " (nonaktif)"}</span>
+          </a>
+        )
+      }
+      <p class="cap num filters-end" aria-live="polite">
+        {drill ? `${tasks.length} tugas terbuka · ${scopeLabel}` : `${nOpen} terbuka${showDone ? ` · ${nDone} selesai` : ""} · ${scopeLabel}`}
+      </p>
+    </div>
+    {drill && <p class="cap t-2 drill-note">Hanya tugas yang belum selesai di proyek yang masih berjalan.</p>}
+    <h2 class="vh">Papan tugas</h2>
+
+    {
+      tasks.length === 0 ? (
+        <EmptyState
+          icon={drill ? "search" : "task"}
+          title={emptyTitle}
+          text={unknownPerson ? "Akunnya mungkin sudah dihapus." : drill ? "Coba filter lain." : "Tambahkan tugas di atas atau dari halaman detail proyek."}
+        >
+          <Fragment slot="actions">
+            {drill ? (
+              <a href="/dashboard/tasks?filter=all" class="btn btn-sm">
+                Lihat semua tugas tim
+              </a>
+            ) : (
+              <a href="/dashboard/projects" class="btn btn-sm">
+                <Icon name="folder" class="ic-sm" />
+                Buka proyek
+              </a>
+            )}
+            {!all && !assignee && counts.unassigned > 0 && (
+              <a href="/dashboard/tasks?filter=all&assignee=none" class="btn btn-sm">
+                Ambil tugas tanpa PJ ({counts.unassigned})
+              </a>
+            )}
+          </Fragment>
+        </EmptyState>
+      ) : (
+        <div class="sec">
+        {/* ponsel: lompat ke kolom status (hitungan per kolom); tanpa JS juga jalan (tautan #col-*) */}
+        {columns.length > 1 && (
+          <nav class="seg board-jump" aria-label="Lompat ke kolom status">
+            {columns.map(([key, col]) => (
+              <a href={`#col-${key}`}>
+                {col.label}
+                <span class="seg-n num">
+                  {tasks.filter((t) => t.status === key).length}
+                  <span class="vh"> tugas</span>
+                </span>
+              </a>
+            ))}
+          </nav>
+        )}
+        <div class="board" id="board" style={`--cols:${columns.length}`}>
+          {columns.map(([key, col]) => {
+            const list = tasks.filter((t) => t.status === key);
+            return (
+              <section class="panel tcol" aria-labelledby={`col-${key}`}>
+                <header class="tcol-head">
+                  <span class:list={["dot", col.cls]} aria-hidden="true" />
+                  <h2 class="h3" id={`col-${key}`}>
+                    {col.label}
+                  </h2>
+                  <span class="cap num">
+                    {list.length}
+                    <span class="vh"> tugas</span>
+                  </span>
+                </header>
+                {list.length === 0 ? (
+                  <EmptyState compact title="Kosong" />
+                ) : (
+                  <ul class="tcol-body">
+                    {list.map((t) => (
+                      <TaskCard task={t} users={users} />
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          })}
+        </div>
+        </div>
+      )
+    }
+  </div>
 </Dash>
+
+<script>
+  // Ingat cakupan terakhir (Tugas saya / Semua tim): buka /dashboard/tasks tanpa parameter → cakupan terakhir
+  const KEY = "esta-task-scope";
+  try {
+    const url = new URL(location.href);
+    if (!url.search && localStorage.getItem(KEY) === "all") location.replace("/dashboard/tasks?filter=all" + url.hash);
+    document.querySelector("[data-task-scope]")?.addEventListener("click", (e) => {
+      const a = (e.target as Element).closest<HTMLAnchorElement>("a[href]");
+      if (!a) return;
+      const f = new URL(a.href).searchParams;
+      if (f.has("assignee")) return;
+      localStorage.setItem(KEY, f.get("filter") === "all" ? "all" : "mine");
+    });
+  } catch {}
+</script>
+
+<style>
+  .drill-note {
+    margin-top: calc(var(--s-6) * -1);
+  }
+</style>

@@ -1,0 +1,175 @@
+---
+// Form konsultasi. Tanpa JavaScript form dikirim biasa ke API (server redirect balik ke /contact?ok=… / ?err=…).
+// Dengan JavaScript, script di bawah mengirimnya lewat fetch dan menampilkan hasilnya tanpa reload.
+import { BUDGETS, SERVICES, SERVICE_GROUPS } from "../../shared/constants";
+import { ARROW_PATH, ARROW_VIEWBOX } from "../lib/icons";
+
+interface Props {
+  /** Awalan id field; bedakan jika ada lebih dari satu form di satu halaman. */
+  id?: string;
+}
+
+const { id = "kontak" } = Astro.props;
+const f = (name: string) => `${id}-${name}`;
+const labelCls = "mono mb-2 block text-[11px] text-white/55";
+const groups = (Object.keys(SERVICE_GROUPS) as (keyof typeof SERVICE_GROUPS)[]).map((key) => ({
+  label: SERVICE_GROUPS[key].title,
+  items: SERVICES.filter((s) => s.group === key),
+}));
+---
+
+<form data-contact-form method="post" action="/api/public/inquiries" class="grid gap-5 sm:grid-cols-2">
+  <input type="text" name="website" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true" />
+  <div>
+    <label for={f("name")} class={labelCls}>Nama *</label>
+    <input
+      id={f("name")}
+      name="name"
+      maxlength="120"
+      required
+      autocomplete="name"
+      class="input-dark"
+      placeholder="mis. Rina Wijaya…"
+    />
+  </div>
+  <div>
+    <label for={f("email")} class={labelCls}>Email *</label>
+    <input
+      id={f("email")}
+      name="email"
+      maxlength="200"
+      type="email"
+      required
+      autocomplete="email"
+      spellcheck="false"
+      class="input-dark"
+      placeholder="nama@bisnis.com"
+    />
+  </div>
+  <div class="sm:col-span-2">
+    <label for={f("company")} class={labelCls}>Bisnis / perusahaan</label>
+    <input
+      id={f("company")}
+      name="company"
+      maxlength="120"
+      autocomplete="organization"
+      class="input-dark"
+      placeholder="Opsional, mis. Toko Batik Laras…"
+    />
+  </div>
+  <div>
+    <label for={f("service")} class={labelCls}>Layanan</label>
+    <select id={f("service")} name="service" class="input-dark">
+      <option value="">Pilih layanan</option>
+      {
+        groups.map((g) => (
+          <optgroup label={g.label}>
+            {g.items.map((s) => (
+              <option>{s.title}</option>
+            ))}
+          </optgroup>
+        ))
+      }
+    </select>
+  </div>
+  <div>
+    <label for={f("budget")} class={labelCls}>Perkiraan budget</label>
+    <select id={f("budget")} name="budget" class="input-dark">
+      <option value="">Pilih budget</option>
+      {BUDGETS.map((b) => <option>{b}</option>)}
+    </select>
+  </div>
+  <div class="sm:col-span-2">
+    <label for={f("message")} class={labelCls}>Ceritakan proyekmu *</label>
+    <textarea
+      id={f("message")}
+      name="message"
+      maxlength="5000"
+      required
+      rows="5"
+      class="input-dark"
+      placeholder="Tujuan, fitur yang dibutuhkan, target waktu…"></textarea>
+  </div>
+  <div class="flex sm:col-span-2">
+    <button type="submit" class="rbtn w-full disabled:opacity-60">
+      <span class="rbtn-icon grad" aria-hidden="true">
+        <svg width="14" height="12" viewBox={ARROW_VIEWBOX} shape-rendering="crispEdges">
+          <path d={ARROW_PATH} fill="currentColor"></path>
+        </svg>
+      </span>
+      <span data-label class="rbtn-label flex-1 justify-center bg-white! text-ink!">Kirim pesan</span>
+    </button>
+  </div>
+</form>
+
+<script>
+  // Progressive enhancement: kirim lewat fetch, tampilkan status tanpa reload.
+  const FAIL = "Gagal mengirim pesan.";
+  const OFFLINE = "Tidak bisa terhubung ke server. Coba lagi.";
+
+  function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text: string) {
+    const node = document.createElement(tag);
+    node.className = cls;
+    node.textContent = text;
+    return node;
+  }
+
+  function enhance(form: HTMLFormElement) {
+    const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    const label = button.querySelector<HTMLElement>("[data-label]")!;
+    const idle = label.textContent ?? "";
+    let pending = false;
+
+    const setPending = (on: boolean) => {
+      pending = on;
+      button.disabled = on;
+      label.textContent = on ? "Mengirim…" : idle;
+    };
+
+    // Pesan error inline (role="alert"), disisipkan tepat sebelum baris tombol.
+    const showError = (msg: string) => {
+      const alert = el("p", "text-sm text-rose-400 outline-none sm:col-span-2", msg);
+      alert.setAttribute("role", "alert");
+      alert.tabIndex = -1;
+      button.parentElement!.before(alert);
+      alert.focus();
+    };
+
+    // Ganti form dengan status sukses, fokus pindah ke judulnya.
+    const showSuccess = (msg: string) => {
+      const box = el("div", "py-16", "");
+      box.setAttribute("role", "status");
+      const title = el("p", "font-pixel text-5xl tracking-[-0.04em] outline-none", "Terkirim.");
+      title.tabIndex = -1;
+      box.append(title, el("p", "mt-4 max-w-sm text-white/70", msg));
+      form.replaceWith(box);
+      title.focus();
+    };
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (pending) return; // cegah kirim ganda
+      form.querySelector('[role="alert"]')?.remove();
+      setPending(true);
+      let body: { message?: string; error?: string } = {};
+      let ok = false;
+      try {
+        const res = await fetch(form.action, {
+          method: "POST",
+          headers: { accept: "application/json" },
+          body: new FormData(form),
+        });
+        ok = res.ok;
+        body = await res.json(); // bukan JSON = dianggap gagal terhubung, sama seperti versi lama
+      } catch {
+        setPending(false);
+        return showError(OFFLINE);
+      }
+      setPending(false);
+      if (ok) showSuccess(body.message ?? "");
+      else showError(body.error ?? FAIL);
+    });
+  }
+
+  document.querySelectorAll<HTMLFormElement>("form[data-contact-form]").forEach(enhance);
+</script>

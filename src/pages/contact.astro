@@ -2,12 +2,12 @@
 import Site from "../layouts/Site.astro";
 import Heading from "../components/Heading.astro";
 import PixelCorner from "../components/PixelCorner.astro";
-import ContactForm from "../components/ContactForm.tsx";
+import ContactForm from "../components/ContactForm.astro";
 import { BRAND } from "@shared/constants";
+import { readFlash } from "@shared/messages";
 
-// Untuk pengunjung tanpa JavaScript: hasil kirim form ditampilkan dari query ?ok= / ?err=
-const ok = Astro.url.searchParams.get("ok");
-const err = Astro.url.searchParams.get("err");
+// Untuk pengunjung tanpa JavaScript: hasil kirim form ditampilkan dari kode ?ok= / ?err= (hanya kode yang dikenal)
+const { ok, err } = readFlash(Astro.url);
 const info = [
   { k: "Waktu balas", v: "Maks. 1×24 jam kerja" },
   { k: "Konsultasi", v: "Gratis, tanpa komitmen" },
@@ -57,7 +57,7 @@ const info = [
         <p class="mono-dim mb-6">[ Form konsultasi ]</p>
         {ok && <p class="mb-4 border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">{ok}</p>}
         {err && <p class="mb-4 border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-300">{err}</p>}
-        <ContactForm client:load />
+        <ContactForm />
       </div>
     </div>
   </section>

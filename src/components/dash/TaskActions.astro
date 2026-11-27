@@ -1,0 +1,115 @@
+---
+// Aksi satu tugas, dipakai bersama oleh TaskCard (papan /dashboard/tasks) dan
+// TaskRow (daftar berkelompok di detail proyek):
+//   1. StatusSelect: ubah status (mouse = langsung kirim; keyboard = Enter / Simpan; tanpa JS = Simpan)
+//   2. popover Ubah (<details class="pop">): form edit lengkap (Simpan + Batal), lalu hapus (tenang, dengan
+//      konfirmasi) di bawah garis pemisah. Esc / klik di luar menutup (perubahan tetap, ditandai); hanya satu
+//      terbuka (forms.ts). Batal = <button type="reset">: membuang perubahan (juga tanpa JS).
+//      Hidden `version` = updatedAt: bila tugas sudah diubah di tab lain, server menolak dengan err=stale.
+// Semua form kembali ke URL halaman ini + #task-<id> (baris/kartu ini) lewat hidden `_back`;
+// hapus kembali ke `afterDelete` (anchor daftar).
+//   variant="card" → slot "lead" (penanggung jawab) + select tanpa bingkai + tombol ikon Ubah 28px (kartu kanban)
+//   variant="row"  → tombol "Ubah" tenang; kedua anak jadi sel grid baris (wrapper display: contents)
+import Icon from "./Icon.astro";
+import Field from "./Field.astro";
+import Options from "./Options.astro";
+import StatusSelect from "./StatusSelect.astro";
+import DeleteForm from "./DeleteForm.astro";
+import { here } from "./ui";
+import { PRIORITY, TASK_STATUS } from "@shared/constants";
+import type { Task, User } from "@shared/types";
+
+interface Props {
+  task: Task;
+  users: User[];
+  variant: "card" | "row";
+  /** anchor tujuan setelah tugas dihapus (mis. "h-tasks") */
+  afterDelete?: string;
+}
+const { task: t, users, variant, afterDelete } = Astro.props;
+const rowId = `task-${t.id}`;
+const back = here(Astro.url, rowId);
+const f = `te-${t.id}`;
+---
+
+<div class:list={["task-actions", variant === "card" ? "is-card" : "is-row"]}>
+  <slot name="lead" />
+  <StatusSelect
+    action={`/api/tasks/${t.id}/status`}
+    back={back}
+    options={TASK_STATUS}
+    selected={t.status}
+    label={`Ubah status: ${t.title}`}
+    saveSr={` status ${t.title}`}
+    class="task-status"
+    selectClass={variant === "card" ? "input-sm" : undefined}
+  />
+  <details class="pop task-edit" name="task-edit">
+    {
+      variant === "card" ? (
+        <summary class="btn-icon" aria-label={`Ubah tugas: ${t.title}`} title="Ubah tugas">
+          <Icon name="edit" />
+        </summary>
+      ) : (
+        <summary class="btn btn-sm btn-quiet">
+          <Icon name="edit" class="ic-sm" />
+          Ubah<span class="vh"> tugas: {t.title}</span>
+        </summary>
+      )
+    }
+    <div class="pop-panel" role="group" aria-label={`Ubah tugas: ${t.title}`}>
+      {/* kepala lembar bawah (ponsel, dengan JS): judul + tutup (perubahan tetap, ditandai seperti Esc) */}
+      <div class="pop-head">
+        <p class="h3 ell" aria-hidden="true">{t.title}</p>
+        <button type="button" class="btn-icon" data-pop-dismiss aria-label="Tutup" title="Tutup">
+          <Icon name="x" />
+        </button>
+      </div>
+      <form method="post" action={`/api/tasks/${t.id}`} class="form-stack task-form" data-guard data-keep={f}>
+        <input type="hidden" name="_back" value={back} />
+        <input type="hidden" name="version" value={t.updatedAt} />
+        <Field id={`${f}-title`} label="Judul" required>
+          <input id={`${f}-title`} name="title" value={t.title} required class="input" autocomplete="off" />
+        </Field>
+        <Field id={`${f}-desc`} label="Catatan" hint="(opsional)">
+          <textarea id={`${f}-desc`} name="description" rows="2" class="input">{t.description}</textarea>
+        </Field>
+        <div class="task-form-grid">
+          <Field id={`${f}-prio`} label="Prioritas">
+            <select id={`${f}-prio`} name="priority" class="input">
+              <Options from={PRIORITY} selected={t.priority} />
+            </select>
+          </Field>
+          <Field id={`${f}-status`} label="Status">
+            <select id={`${f}-status`} name="status" class="input">
+              <Options from={TASK_STATUS} selected={t.status} />
+            </select>
+          </Field>
+          <Field id={`${f}-who`} label="Penanggung jawab" class="wide">
+            <select id={`${f}-who`} name="assigneeId" class="input">
+              <option value="">Tanpa penanggung jawab</option>
+              <Options from={users} selected={t.assigneeId} />
+            </select>
+          </Field>
+          <Field id={`${f}-due`} label="Deadline" class="wide">
+            <input id={`${f}-due`} name="dueDate" type="date" value={t.dueDate ?? ""} class="input num" />
+          </Field>
+        </div>
+        <div class="pop-foot">
+          <button type="submit" class="btn">Simpan<span class="vh"> tugas {t.title}</span></button>
+          <button type="reset" class="btn btn-quiet" data-pop-close>Batal<span class="vh"> (buang perubahan)</span></button>
+        </div>
+      </form>
+      <DeleteForm
+        action={`/api/tasks/${t.id}/delete`}
+        confirm={`Hapus tugas “${t.title}”? Tindakan ini tidak bisa dibatalkan.`}
+        label="Hapus tugas"
+        srSuffix={` ${t.title}`}
+        back={here(Astro.url, afterDelete)}
+        size="sm"
+        quiet
+        class="pop-sep"
+      />
+    </div>
+  </details>
+</div>

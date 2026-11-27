@@ -1,13 +1,59 @@
 ---
+// Progres tugas sebagai bullet bar: isi = tugas selesai, penanda tipis = bagian waktu yang sudah berjalan.
+// Warna isi (selalu dengan teks): --text normal, --warning bila tertinggal (behind), --critical bila lewat
+// deadline (late), --ok saat 100%. Tanpa tugas: teks "Belum ada tugas" (bukan 0%).
+// Pembaca layar: role=progressbar + aria-valuetext ("40% selesai, 2 dari 5 tugas, waktu berjalan 70%"),
+// yang juga ikut dibaca bila Progress ada di dalam tautan (nama tautan dari isinya).
 interface Props {
-  value: number;
+  done: number;
+  total: number;
+  /** nama proyek untuk label ("Progres <nama>") */
+  name?: string;
+  /** waktu berjalan 0–1 (null = tanpa penanda) */
+  elapsed?: number | null;
+  late?: boolean;
+  behind?: boolean;
+  class?: string;
 }
-const { value } = Astro.props;
+const { done, total, name, elapsed = null, late = false, behind = false, class: cls } = Astro.props;
+const value = total > 0 ? Math.round((done / total) * 100) : 0;
+const time = elapsed == null ? null : Math.round(elapsed * 100);
+const label = name ? `Progres ${name}` : "Progres";
+const valuetext = [
+  `${value}% selesai`,
+  `${done} dari ${total} tugas`,
+  time != null && `waktu berjalan ${time}%`,
+  late && value < 100 ? "lewat deadline" : behind && "tertinggal dari jadwal",
+]
+  .filter(Boolean)
+  .join(", ");
 ---
 
-<div class="flex items-center gap-2">
-  <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-200">
-    <div class:list={["h-full rounded-full", value === 100 ? "bg-emerald-500" : "bg-accent"]} style={{ width: `${value}%` }}></div>
-  </div>
-  <span class="w-9 text-right text-xs tabular-nums text-zinc-500">{value}%</span>
-</div>
+{
+  total === 0 ? (
+    <span class:list={["progress-none", cls]}>Belum ada tugas</span>
+  ) : (
+    <div class:list={["progress", value === 100 && "is-done", value < 100 && late && "is-late", value < 100 && !late && behind && "is-behind", cls]}>
+      <div
+        class="progress-bar"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={value}
+        aria-valuetext={valuetext}
+        aria-label={label}
+      >
+        <span class="progress-track">
+          <span class="progress-fill" style={{ width: `${value}%` }} />
+        </span>
+        {/* penanda hanya di dalam lintasan: di 0% / 100% ia menempel pada ujung dan terlihat seperti cacat */}
+        {time != null && time > 0 && time < 100 && (
+          <span class="progress-mark" style={{ left: `clamp(1px, ${time}%, calc(100% - 1px))` }} title={`Waktu berjalan ${time}%`} />
+        )}
+      </div>
+      <span class="progress-val num" aria-hidden="true">
+        {value}%
+      </span>
+    </div>
+  )
+}

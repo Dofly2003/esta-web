@@ -1,76 +1,451 @@
 ---
 import Dash from "../../../layouts/Dash.astro";
 import PageHeader from "../../../components/dash/PageHeader.astro";
-import { confirmAttr } from "../../../components/dash/ui";
-import { apiOrNull } from "../../../lib/api";
-import { PORTFOLIO_CATEGORIES } from "@shared/constants";
-import type { PortfolioItem, Project } from "@shared/types";
+import Panel from "../../../components/dash/Panel.astro";
+import Field from "../../../components/dash/Field.astro";
+import Options from "../../../components/dash/Options.astro";
+import DeleteForm from "../../../components/dash/DeleteForm.astro";
+import ViewOnSite from "../../../components/dash/ViewOnSite.astro";
+import Badge from "../../../components/dash/Badge.astro";
+import Icon from "../../../components/dash/Icon.astro";
+import { coverBg, errIn, externalAttrs, invalid } from "../../../components/dash/ui";
+import { apiOrNull, withFlash } from "../../../lib/api";
+import { DEFAULT_COVER, isAdmin, MAX_FEATURED, PORTFOLIO_CATEGORIES } from "@shared/constants";
+import { ERR, type ErrCode } from "@shared/messages";
+import { currentYear, slugify } from "@shared/format";
+import type { PortfolioEditResponse } from "@shared/types";
 
 const id = Astro.params.id!;
-const data = await apiOrNull<{ item: PortfolioItem | null; projects: Project[] }>(
-  Astro,
-  `/api/portfolio/${encodeURIComponent(id)}`,
-);
-if (!data) return Astro.redirect("/dashboard/portfolio?err=" + encodeURIComponent("Karya tidak ditemukan."));
-const { item, projects } = data;
+const data = await apiOrNull<PortfolioEditResponse>(Astro, `/api/portfolio/${encodeURIComponent(id)}`);
+if (!data) return Astro.redirect(withFlash("/dashboard/portfolio", { err: "pf-not-found" }));
+const { item, projects, featuredCount } = data;
 const isNew = !item;
+const admin = isAdmin(Astro.locals.user!);
+
+// presentasi saja: pratinjau sampul di panel samping
+const pageTitle = isNew ? "Tambah karya" : `Ubah karya: ${item!.title}`;
+const coverColor = item?.coverColor ?? DEFAULT_COVER;
+// error validasi tampil di field-nya (tidak diulang di flash atas)
+const FIELD_ERRS = ["pf-title-required", "pf-slug-taken", "pf-slug-invalid", "pf-year-invalid", "pf-sort-invalid", "pf-image-invalid", "pf-live-invalid"] as const;
+const err = errIn(Astro.url, FIELD_ERRS) as (typeof FIELD_ERRS)[number] | null;
+const msg = (code: ErrCode) => (err === code ? ERR[code] : null);
+const titleErr = msg("pf-title-required");
+// slug sudah dipakai: saran slug bebas dari server (?saran=), divalidasi ulang di sini
+const saran = slugify(Astro.url.searchParams.get("saran") ?? "");
+const slugErr = msg("pf-slug-taken") ? `${ERR["pf-slug-taken"]}${saran ? ` Coba “${saran}”.` : ""}` : msg("pf-slug-invalid");
+const yearErr = msg("pf-year-invalid");
+const sortErr = msg("pf-sort-invalid");
+const imageErr = msg("pf-image-invalid");
+const liveErr = msg("pf-live-invalid");
+// unggulan lain (selain karya ini) yang sudah tayang
+const otherFeatured = featuredCount - (item?.featured && item.published ? 1 : 0);
+const noCode = { spellcheck: "false", autocapitalize: "none", autocomplete: "off" } as const;
 ---
 
-<Dash title={isNew ? "Tambah karya" : `Edit: ${item!.title}`}>
-  <a href="/dashboard/portfolio" class="text-sm text-zinc-500 hover:text-accent">← Portofolio</a>
-  <div class="mt-3">
-    <PageHeader title={isNew ? "Tambah karya" : `Edit: ${item!.title}`}>
-      {item?.published && <a href={`/portfolio/${item.slug}`} target="_blank" class="btn-ghost">Lihat di web ↗</a>}
-    </PageHeader>
-  </div>
-
-  <form method="post" action={isNew ? "/api/portfolio" : `/api/portfolio/${item!.id}`} class="card grid gap-4 p-5 sm:grid-cols-2">
-    <input type="hidden" name="_back" value={Astro.url.pathname} />
-    <div class="sm:col-span-2"><label class="label">Judul *</label><input name="title" required value={item?.title} class="input" /></div>
-    <div><label class="label">Klien</label><input name="client" value={item?.client} class="input" /></div>
-    <div><label class="label">Slug URL (kosongkan = otomatis)</label><input name="slug" value={item?.slug} class="input" placeholder="nama-proyek" /></div>
-    <div>
-      <label class="label">Kategori</label>
-      <select name="category" class="input">
-        {PORTFOLIO_CATEGORIES.map((c) => <option selected={(item?.category ?? "Website") === c}>{c}</option>)}
-      </select>
-    </div>
-    <div><label class="label">Tahun</label><input name="year" inputmode="numeric" value={item?.year ?? new Date().getFullYear()} class="input" /></div>
-    <div class="sm:col-span-2"><label class="label">Ringkasan (1–2 kalimat)</label><textarea name="summary" rows="2" class="input">{item?.summary}</textarea></div>
-    <div class="sm:col-span-2">
-      <label class="label">Cerita proyek (pisahkan paragraf dengan baris kosong)</label>
-      <textarea name="content" rows="7" class="input" placeholder="Tantangan, solusi, hasil…">{item?.content}</textarea>
-    </div>
-    <div><label class="label">Teknologi / tag (pisah koma)</label><input name="tags" value={item?.tags} class="input" placeholder="Astro, Figma, SEO" /></div>
-    <div><label class="label">Link live (opsional)</label><input name="liveUrl" type="url" value={item?.liveUrl ?? ""} class="input" placeholder="https://" /></div>
-    <div>
-      <label class="label">Link gambar cover (kosongkan = pakai warna)</label>
-      <input name="imageUrl" type="url" value={item?.imageUrl ?? ""} class="input" placeholder="https://… .jpg / .png / .webp" />
-    </div>
-    <div>
-      <label class="label">Warna cover (dipakai jika tanpa gambar)</label>
-      <input name="coverColor" type="color" value={item?.coverColor ?? "#6d5efc"} class="h-10 w-20 rounded-lg border border-zinc-300" />
-    </div>
-    <div>
-      <label class="label">Terhubung ke proyek internal</label>
-      <select name="projectId" class="input">
-        <option value="">—</option>
-        {projects.map((p) => <option value={p.id} selected={item?.projectId === p.id}>{p.name}</option>)}
-      </select>
-    </div>
-    <div><label class="label">Urutan tampil (kecil = duluan)</label><input name="sortOrder" inputmode="numeric" value={item?.sortOrder ?? 0} class="input" /></div>
-    <div class="flex flex-wrap gap-6 sm:col-span-2">
-      <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="published" checked={item?.published ?? false} /> Tayang di website</label>
-      <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="featured" checked={item?.featured ?? false} /> Unggulan di Beranda</label>
-    </div>
-    <div class="sm:col-span-2"><button type="submit" class="btn-primary">Simpan karya</button></div>
-  </form>
-
+<Dash title={pageTitle} trail={[{ label: isNew ? "Tambah karya" : item!.title }]} inlineErrors={FIELD_ERRS}>
   {
     item && (
-      <form method="post" action={`/api/portfolio/${item.id}/delete`} class="mt-4">
-        <button class="btn-danger" {...confirmAttr("Hapus karya ini dari portofolio?")}>Hapus karya</button>
-      </form>
+      <Fragment slot="actions">
+        {/* pratinjau halaman publik (juga untuk draf; hanya untuk tim yang login) */}
+        <a href={`/dashboard/portfolio/${item.id}/pratinjau`} class="btn btn-sm" {...externalAttrs}>
+          <Icon name="monitor" class="ic-sm" />
+          <span class="hide-sm">Pratinjau halaman</span>
+          <span class="vh"> (tab baru)</span>
+        </a>
+        {item.published && <ViewOnSite href={`/portfolio/${item.slug}`} />}
+      </Fragment>
     )
   }
+
+  <PageHeader title={pageTitle}>
+    <p class="pf-status">
+      <span class="vh">Status: </span>
+      {
+        item?.published ? (
+          <Badge tone="ok">Tayang di website</Badge>
+        ) : (
+          <Badge tone="neutral">{isNew ? "Draf baru" : "Draf"}</Badge>
+        )
+      }
+      {
+        item?.featured && (
+          <Badge tone="none">
+            <Icon name="star" class="ic-sm" />
+            Unggulan di Beranda
+          </Badge>
+        )
+      }
+      <span class="cap">
+        {
+          item?.published
+            ? "Perubahan langsung tampil di website setelah disimpan."
+            : "Belum tampil di website. Centang “Tayang di website” lalu simpan untuk menayangkan."
+        }
+      </span>
+    </p>
+  </PageHeader>
+
+  <div class="pf-edit">
+    <form
+      id="pf-form"
+      method="post"
+      action={isNew ? "/api/portfolio" : `/api/portfolio/${item!.id}`}
+      class="pf-main"
+      data-guard
+      data-keep="pf-editor"
+      data-published={item?.published ? "1" : "0"}
+    >
+      <input type="hidden" name="_back" value={Astro.url.pathname} />
+      {item && <input type="hidden" name="version" value={item.updatedAt} />}
+
+      <Panel id="h-info" title="Informasi karya">
+        <div class="panel-body form-grid">
+          <Field id="f-title" label="Judul" required class="full" error={titleErr}>
+            <input id="f-title" name="title" required value={item?.title} class="input" autocomplete="off" data-pv="title" {...invalid("f-title", titleErr)} />
+          </Field>
+          <Field id="f-client" label="Klien">
+            <input id="f-client" name="client" value={item?.client} class="input" autocomplete="off" />
+          </Field>
+          <Field id="f-slug" label="Slug URL" hint="(kosongkan = otomatis)" error={slugErr}>
+            <input
+              id="f-slug"
+              name="slug"
+              value={item?.slug}
+              class="input code"
+              placeholder="mis. nama-proyek"
+              pattern="[A-Za-z0-9\- ]*"
+              title="Huruf, angka, dan tanda hubung"
+              aria-describedby={[slugErr && "f-slug-err", item?.published && "f-slug-note"].filter(Boolean).join(" ") || undefined}
+              aria-invalid={slugErr ? "true" : undefined}
+              {...noCode}
+            />
+            {
+              item?.published && (
+                <p class="cap" id="f-slug-note">
+                  Mengubah slug mengganti alamat halaman publik; link lama (/portfolio/{item.slug}) tidak berlaku lagi.
+                </p>
+              )
+            }
+          </Field>
+          <Field id="f-category" label="Kategori">
+            <select id="f-category" name="category" class="input">
+              {PORTFOLIO_CATEGORIES.map((c) => <option selected={(item?.category ?? "Website") === c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field id="f-year" label="Tahun" error={yearErr}>
+            <input
+              id="f-year"
+              name="year"
+              inputmode="numeric"
+              autocomplete="off"
+              pattern="[0-9]{4}"
+              title="Tahun 4 digit, mis. 2026"
+              value={item?.year ?? currentYear()}
+              class="input num"
+              {...invalid("f-year", yearErr)}
+            />
+          </Field>
+        </div>
+      </Panel>
+
+      <Panel id="h-story" title="Cerita">
+        <div class="panel-body form-grid">
+          <Field id="f-summary" label="Ringkasan" hint="(1–2 kalimat)" class="full">
+            <textarea id="f-summary" name="summary" rows="2" class="input">{item?.summary}</textarea>
+          </Field>
+          <Field id="f-content" label="Cerita proyek" hint="(pisahkan paragraf dengan baris kosong)" class="full">
+            <textarea id="f-content" name="content" rows="9" class="input" placeholder="Tantangan, solusi, hasil…">{item?.content}</textarea>
+          </Field>
+          <Field id="f-tags" label="Teknologi / tag" hint="(pisah koma)" class="full">
+            <input id="f-tags" name="tags" value={item?.tags} class="input" placeholder="mis. Astro, Figma, SEO" autocomplete="off" />
+          </Field>
+        </div>
+      </Panel>
+
+      <Panel id="h-media" title="Sampul & tautan">
+        <div class="panel-body form-grid">
+          <Field id="f-image" label="Link gambar cover" hint="(kosongkan = pakai warna)" class="full" error={imageErr}>
+            <input
+              id="f-image"
+              name="imageUrl"
+              type="url"
+              value={item?.imageUrl ?? ""}
+              class="input"
+              placeholder="https://… .jpg / .png / .webp"
+              pattern="(https?://\S+|/[^/\s]\S*)"
+              title="Link langsung ke file gambar, diawali https:// (atau /path di website ini)"
+              data-pv="image"
+              aria-describedby={[imageErr && "f-image-err", "f-image-hint"].filter(Boolean).join(" ")}
+              aria-invalid={imageErr ? "true" : undefined}
+              {...noCode}
+            />
+            <p class="cap" id="f-image-hint">
+              Link langsung ke file .jpg / .png / .webp (bukan link Google Drive atau Figma). Disarankan 1600×1000 px (rasio 16:10).
+            </p>
+            {/* diisi pratinjau bila gambar gagal dimuat (lihat skrip di bawah) */}
+            <p class="err" id="f-image-load" role="status" hidden>
+              <Icon name="alert" class="ic-sm" />
+              <span>Gambar tidak bisa dimuat dari link ini. Pakai link langsung ke file .jpg / .png / .webp (bukan link Google Drive/Figma).</span>
+            </p>
+          </Field>
+          <Field id="f-color" label="Warna cover" hint="(dipakai jika tanpa gambar)">
+            <span class="pf-color">
+              <input id="f-color" name="coverColor" type="color" value={coverColor} class="input-color" data-pv="color" />
+              <output for="f-color" class="code cap" data-pv="color-out">{coverColor}</output>
+            </span>
+          </Field>
+          <Field id="f-live" label="Link live" hint="(opsional)" error={liveErr}>
+            <input
+              id="f-live"
+              name="liveUrl"
+              type="url"
+              value={item?.liveUrl ?? ""}
+              class="input"
+              placeholder="https://"
+              pattern="https?://.+"
+              title="Diawali https://"
+              {...invalid("f-live", liveErr)}
+              {...noCode}
+            />
+          </Field>
+        </div>
+      </Panel>
+
+      {/* ponsel/tablet (< 1200px): tombol simpan menempel di bawah layar (panel Publikasi ada jauh di bawah) */}
+      <div class="pf-savebar">
+        <button type="submit" class="btn-primary">Simpan karya</button>
+      </div>
+    </form>
+
+    <aside class="pf-side" aria-label="Pratinjau dan publikasi">
+      <Panel id="h-pv" title="Pratinjau sampul">
+        <div class="panel-body">
+          <div class="pf-pv cover" data-pv="cover" style={{ background: coverBg(coverColor) }}>
+            <img src={item?.imageUrl || undefined} alt="" data-pv="img" hidden={!item?.imageUrl} />
+            <span class="cover-tag ell" data-pv="tag" hidden={!!item?.imageUrl}>{item?.title || "Judul karya"}</span>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel id="h-pub" title="Publikasi">
+        <div class="panel-body">
+          <div class="pf-checks">
+            <label class="chk">
+              <input type="checkbox" name="published" form="pf-form" checked={item?.published ?? false} data-pf-published />
+              Tayang di website
+            </label>
+            <label class="chk">
+              <input type="checkbox" name="featured" form="pf-form" checked={item?.featured ?? false} aria-describedby="f-feat-hint" data-pf-featured />
+              Unggulan di Beranda
+            </label>
+            <p class="cap" id="f-feat-hint">
+              Hanya karya yang tayang bisa jadi unggulan. Beranda menampilkan maks. {MAX_FEATURED} karya unggulan (urutan
+              terkecil dulu); saat ini {otherFeatured} karya lain unggulan.
+            </p>
+            {
+              otherFeatured >= MAX_FEATURED && !item?.featured && (
+                <p class="cap v-warn" id="f-feat-full">Sudah {otherFeatured} unggulan: karya ini hanya tampil di Beranda bila urutannya lebih kecil.</p>
+              )
+            }
+          </div>
+          <Field id="f-project" label="Terhubung ke proyek internal" hint="(agar Ringkasan tahu proyeknya sudah dipublikasikan)">
+            <select id="f-project" name="projectId" form="pf-form" class="input">
+              <option value="">Tidak terhubung</option>
+              <Options from={projects} selected={item?.projectId} />
+            </select>
+          </Field>
+          <Field id="f-sort" label="Urutan tampil" hint="(kecil = duluan, di Beranda & Portofolio)" error={sortErr}>
+            <input
+              id="f-sort"
+              name="sortOrder"
+              form="pf-form"
+              inputmode="numeric"
+              pattern="-?[0-9]{1,6}"
+              title="Bilangan bulat, mis. 0, 1, 2"
+              value={item?.sortOrder ?? 0}
+              class="input num"
+              {...invalid("f-sort", sortErr)}
+            />
+          </Field>
+        </div>
+        <div class="panel-foot pf-save-side">
+          <button type="submit" form="pf-form" class="btn-primary">Simpan karya</button>
+        </div>
+      </Panel>
+
+      {
+        item && admin && (
+          <Panel id="h-danger" title="Hapus">
+            <div class="panel-body danger-zone">
+              <p class="small t-2">Karya dihapus permanen dari portofolio dan website.</p>
+              <DeleteForm
+                action={`/api/portfolio/${item.id}/delete`}
+                confirm={`Hapus karya “${item.title}” dari portofolio${item.published ? " dan website publik" : ""}? Tindakan ini tidak bisa dibatalkan.`}
+                label="Hapus karya"
+              />
+            </div>
+          </Panel>
+        )
+      }
+      {item && !admin && <p class="cap">Hanya admin yang bisa menghapus karya.</p>}
+    </aside>
+  </div>
 </Dash>
+
+<script>
+  // Pratinjau sampul langsung (presentasi saja; tidak memengaruhi data form)
+  import { coverBg } from "../../../components/dash/ui";
+  import { DEFAULT_COVER } from "@shared/constants";
+
+  const $ = <T extends Element>(k: string) => document.querySelector<T>(`[data-pv="${k}"]`);
+  const title = $<HTMLInputElement>("title");
+  const color = $<HTMLInputElement>("color");
+  const image = $<HTMLInputElement>("image");
+  const out = $<HTMLOutputElement>("color-out");
+  const cover = $<HTMLElement>("cover");
+  const img = $<HTMLImageElement>("img");
+  const tag = $<HTMLElement>("tag");
+  // pesan "gambar tidak bisa dimuat" di bawah field link gambar
+  const loadErr = document.getElementById("f-image-load");
+  const setLoadErr = (on: boolean) => {
+    if (!loadErr || !image) return;
+    loadErr.hidden = !on;
+    const ids = (image.getAttribute("aria-describedby") ?? "").split(" ").filter((x) => x && x !== "f-image-load");
+    if (on) ids.push("f-image-load");
+    image.setAttribute("aria-describedby", ids.join(" "));
+  };
+  const sync = () => {
+    if (!cover || !img || !tag) return;
+    const c = color?.value || DEFAULT_COVER;
+    cover.style.background = coverBg(c);
+    if (out) out.textContent = c;
+    tag.textContent = title?.value.trim() || "Judul karya";
+    const src = image?.value.trim() ?? "";
+    const valid = /^(https?:\/\/|\/(?!\/))\S+$/.test(src);
+    if (!valid) setLoadErr(false);
+    if (valid && img.getAttribute("src") !== src) {
+      setLoadErr(false);
+      img.src = src;
+    }
+    img.hidden = !valid;
+    tag.hidden = valid;
+  };
+  img?.addEventListener("error", () => {
+    if (img && tag) {
+      img.hidden = true;
+      tag.hidden = false;
+    }
+    if ((image?.value.trim() ?? "") !== "") setLoadErr(true);
+  });
+  img?.addEventListener("load", () => setLoadErr(false));
+  // gambar tersimpan yang rusak: error bisa terjadi sebelum skrip ini jalan
+  if (img && img.complete && img.getAttribute("src") && img.naturalWidth === 0) {
+    img.hidden = true;
+    if (tag) tag.hidden = false;
+    setLoadErr(true);
+  }
+  for (const el of [title, color, image]) el?.addEventListener("input", sync);
+
+  // Publikasi: Unggulan hanya bila Tayang dicentang; konfirmasi bila status tayang berubah saat disimpan
+  const form = document.getElementById("pf-form") as HTMLFormElement | null;
+  const pub = document.querySelector<HTMLInputElement>("[data-pf-published]");
+  const feat = document.querySelector<HTMLInputElement>("[data-pf-featured]");
+  const syncFeat = () => {
+    if (!pub || !feat) return;
+    feat.disabled = !pub.checked;
+    if (!pub.checked) feat.checked = false;
+  };
+  pub?.addEventListener("change", syncFeat);
+  form?.addEventListener("restored", () => {
+    syncFeat();
+    sync();
+  });
+  syncFeat();
+  form?.addEventListener("submit", (e) => {
+    if (!pub || !form) return;
+    const was = form.dataset.published === "1";
+    if (pub.checked === was) return;
+    const name = title?.value.trim() || "karya ini";
+    const msg = pub.checked ? `Simpan dan tayangkan “${name}” di website publik?` : `Simpan dan sembunyikan “${name}” dari website publik?`;
+    if (!confirm(msg)) {
+      e.preventDefault();
+      form.dataset.dirty = "";
+    }
+  });
+</script>
+
+<style>
+  /* editor karya: form 2 kolom + panel samping (pratinjau, publikasi) yang sticky */
+  .pf-edit {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+    gap: var(--s-6);
+    align-items: start;
+  }
+  .pf-main,
+  .pf-side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-4);
+    min-width: 0;
+  }
+  .pf-side {
+    position: sticky;
+    top: calc(var(--top-h) + var(--s-4));
+  }
+  .pf-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+  }
+  .pf-checks {
+    display: flex;
+    flex-direction: column;
+  }
+  .pf-checks .cap {
+    padding-left: var(--s-6);
+  }
+  .pf-checks .cap + .cap {
+    margin-top: var(--s-1);
+  }
+  #f-image-load:not([hidden]) {
+    margin-top: var(--s-1);
+  }
+  .pf-savebar {
+    display: none;
+  }
+  .pf-color {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+  }
+  /* pratinjau: .cover (dashboard.css) + bingkai */
+  .pf-pv {
+    border: 1px solid var(--border);
+    border-radius: var(--r-control);
+  }
+  @media (max-width: 1199px) {
+    .pf-edit {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .pf-side {
+      position: static;
+    }
+    /* satu tombol simpan terlihat: bilah menempel di bawah layar menggantikan tombol di panel Publikasi */
+    .pf-savebar {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      display: flex;
+      justify-content: flex-end;
+      padding: var(--s-3) 0;
+      background: color-mix(in oklab, var(--canvas) 92%, transparent);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border);
+    }
+    .pf-save-side {
+      display: none;
+    }
+  }
+</style>

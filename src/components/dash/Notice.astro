@@ -1,0 +1,20 @@
+---
+// Kotak pesan .notice bernada: ikon sesuai nada + isi (slot) + slot "end" (mis. tombol tutup).
+// crit → role="alert", lainnya role="status". Dipakai flash Dash.astro dan error login.
+// Atribut lain (id, data-*) diteruskan ke <p>.
+import Icon, { type IconName } from "./Icon.astro";
+
+interface Props {
+  tone: "ok" | "crit" | "warn" | "info";
+  class?: string;
+  [attr: string]: unknown;
+}
+const { tone, class: cls, ...attrs } = Astro.props;
+const icon: IconName = tone === "ok" ? "check" : tone === "info" ? "info" : "alert";
+---
+
+<p class:list={["notice", `tone-${tone}`, cls]} role={tone === "crit" ? "alert" : "status"} {...attrs}>
+  <Icon name={icon} />
+  <span><slot /></span>
+  <slot name="end" />
+</p>

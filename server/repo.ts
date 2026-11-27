@@ -1,7 +1,7 @@
 // Akses data (query SQL) — satu-satunya tempat yang menyentuh tabel.
 // Hapus berantai ditulis eksplisit (tidak bergantung pada PRAGMA foreign_keys) agar sama di file lokal & Turso.
 import type { Row } from "@libsql/client";
-import { batch, first, newId, now, rows, run } from "./db";
+import { batch, client, first, newId, now, ready, rows, run } from "./db";
 import type { DiscordSettings, Inquiry, PortfolioItem, Project, Task, User } from "../shared/types";
 
 /* ---------- mapper baris → objek ---------- */
@@ -83,6 +83,17 @@ const one = async <T>(sql: string, map: (r: Row) => T, args: Record<string, unkn
 };
 const count = async (sql: string, args: Record<string, unknown> = {}) => n((await first(sql, args as never))?.n);
 
+/** Data tulis = baris tanpa kolom yang diisi otomatis */
+type Input<T> = Omit<T, "id" | "createdAt" | "updatedAt">;
+/** Kolom otomatis yang boleh diisi saat impor / seed */
+type Seed = { id?: string; createdAt?: string; updatedAt?: string };
+/** id baru + cap waktu (pakai nilai impor bila ada) */
+const stamps = (d: Seed, at = now()) => ({
+  id: d.id ?? newId(),
+  createdAt: d.createdAt ?? at,
+  updatedAt: d.updatedAt ?? at,
+});
+
 /* ---------- users ---------- */
 export const users = {
   list: () => many("SELECT * FROM users ORDER BY name COLLATE NOCASE", toUser),
@@ -120,6 +131,14 @@ export const users = {
     return id;
   },
   setPassword: (id: string, hash: string) => run("UPDATE users SET password_hash = $hash WHERE id = $id", { id, hash }),
+  /** Password baru dari admin + keluarkan akun itu dari semua sesi (atomik) */
+  resetPassword: (id: string, hash: string) =>
+    batch([
+      { sql: "UPDATE users SET password_hash = $hash WHERE id = $id", args: { id, hash } },
+      { sql: "DELETE FROM sessions WHERE user_id = $id", args: { id } },
+    ]),
+  setRole: (id: string, role: string) => run("UPDATE users SET role = $role WHERE id = $id", { id, role }),
+  countAdmins: () => count("SELECT COUNT(*) AS n FROM users WHERE role = 'ADMIN'"),
   setDiscordId: (id: string, discordId: string) =>
     run("UPDATE users SET discord_id = $discordId WHERE id = $id", { id, discordId }),
   remove: (id: string) =>
@@ -147,7 +166,7 @@ export const sessions = {
 };
 
 /* ---------- proyek ---------- */
-export type ProjectInput = Omit<Project, "id" | "createdAt" | "updatedAt">;
+export type ProjectInput = Input<Project>;
 const projectArgs = (d: ProjectInput) => ({
   name: d.name,
   client: d.client,
@@ -161,18 +180,20 @@ const projectArgs = (d: ProjectInput) => ({
 });
 
 export const projects = {
-  list: () => many("SELECT * FROM projects ORDER BY updated_at DESC", toProject),
+  // urutan tampilan ditentukan API (/api/projects?sort=); di sini nama saja agar stabil
+  list: () => many("SELECT * FROM projects ORDER BY name COLLATE NOCASE", toProject),
   get: (id: string) => one("SELECT * FROM projects WHERE id = $id", toProject, { id }),
-  async create(d: ProjectInput & { id?: string; createdAt?: string; updatedAt?: string }) {
-    const id = d.id ?? newId();
-    const at = now();
+  async create(d: ProjectInput & Seed) {
+    const st = stamps(d);
     await run(
       `INSERT INTO projects (id, name, client, type, status, description, budget, start_date, due_date, lead_id, created_at, updated_at)
        VALUES ($id, $name, $client, $type, $status, $description, $budget, $startDate, $dueDate, $leadId, $createdAt, $updatedAt)`,
-      { ...projectArgs(d), id, createdAt: d.createdAt ?? at, updatedAt: d.updatedAt ?? at },
+      { ...projectArgs(d), ...st },
     );
-    return id;
+    return st.id;
   },
+  setStatus: (id: string, status: string) =>
+    run("UPDATE projects SET status = $status, updated_at = $at WHERE id = $id", { id, status, at: now() }),
   update: (id: string, d: ProjectInput) =>
     run(
       `UPDATE projects SET name=$name, client=$client, type=$type, status=$status, description=$description, budget=$budget,
@@ -188,7 +209,7 @@ export const projects = {
 };
 
 /* ---------- tugas ---------- */
-export type TaskInput = Omit<Task, "id" | "createdAt" | "updatedAt">;
+export type TaskInput = Input<Task>;
 const TASK_ORDER = "ORDER BY due_date IS NULL, due_date, created_at";
 const taskArgs = (d: Omit<TaskInput, "projectId">) => ({
   title: d.title,
@@ -204,27 +225,16 @@ export const tasks = {
   byProject: (projectId: string) =>
     many(`SELECT * FROM tasks WHERE project_id = $projectId ${TASK_ORDER}`, toTask, { projectId }),
   get: (id: string) => one("SELECT * FROM tasks WHERE id = $id", toTask, { id }),
-  async create(d: TaskInput & { id?: string; createdAt?: string; updatedAt?: string }) {
-    const id = d.id ?? newId();
-    const at = now();
-    await batch([
-      {
-        sql: `INSERT INTO tasks (id, title, description, status, priority, due_date, project_id, assignee_id, created_at, updated_at)
-              VALUES ($id, $title, $description, $status, $priority, $dueDate, $projectId, $assigneeId, $createdAt, $updatedAt)`,
-        args: {
-          ...taskArgs(d),
-          id,
-          projectId: d.projectId,
-          createdAt: d.createdAt ?? at,
-          updatedAt: d.updatedAt ?? at,
-        },
-      },
-      // proyek yang tugasnya berubah naik ke atas daftar "terakhir diubah" (kecuali saat impor data lama)
-      ...(d.createdAt
-        ? []
-        : [{ sql: "UPDATE projects SET updated_at = $at WHERE id = $pid", args: { at, pid: d.projectId } }]),
-    ]);
-    return id;
+  // projects.updated_at TIDAK disentuh: dipakai sebagai versi form edit proyek (cek bentrok antar-tab),
+  // jadi menambah tugas tidak boleh membuat form edit proyek di tab lain dianggap usang.
+  async create(d: TaskInput & Seed) {
+    const st = stamps(d);
+    await run(
+      `INSERT INTO tasks (id, title, description, status, priority, due_date, project_id, assignee_id, created_at, updated_at)
+       VALUES ($id, $title, $description, $status, $priority, $dueDate, $projectId, $assigneeId, $createdAt, $updatedAt)`,
+      { ...taskArgs(d), ...st, projectId: d.projectId },
+    );
+    return st.id;
   },
   update: (id: string, d: Omit<TaskInput, "projectId">) =>
     run(
@@ -238,7 +248,7 @@ export const tasks = {
 };
 
 /* ---------- portofolio ---------- */
-export type PortfolioInput = Omit<PortfolioItem, "id" | "createdAt" | "updatedAt">;
+type PortfolioInput = Input<PortfolioItem>;
 const PF_ORDER = "ORDER BY sort_order, year DESC";
 const pfArgs = (d: PortfolioInput) => ({
   slug: d.slug,
@@ -265,17 +275,16 @@ export const portfolio = {
   bySlug: (slug: string) => one("SELECT * FROM portfolio WHERE slug = $slug", toPortfolio, { slug }),
   byProject: (projectId: string) =>
     many("SELECT * FROM portfolio WHERE project_id = $projectId", toPortfolio, { projectId }),
-  async create(d: PortfolioInput & { id?: string; createdAt?: string; updatedAt?: string }) {
-    const id = d.id ?? newId();
-    const at = now();
+  async create(d: PortfolioInput & Seed) {
+    const st = stamps(d);
     await run(
       `INSERT INTO portfolio (id, slug, title, client, category, year, summary, content, tags, cover_color, image_url, live_url,
         featured, published, sort_order, project_id, created_at, updated_at)
        VALUES ($id, $slug, $title, $client, $category, $year, $summary, $content, $tags, $coverColor, $imageUrl, $liveUrl,
         $featured, $published, $sortOrder, $projectId, $createdAt, $updatedAt)`,
-      { ...pfArgs(d), id, createdAt: d.createdAt ?? at, updatedAt: d.updatedAt ?? at },
+      { ...pfArgs(d), ...st },
     );
-    return id;
+    return st.id;
   },
   update: (id: string, d: PortfolioInput) =>
     run(
@@ -284,20 +293,29 @@ export const portfolio = {
        published=$published, sort_order=$sortOrder, project_id=$projectId, updated_at=$updatedAt WHERE id=$id`,
       { ...pfArgs(d), id, updatedAt: now() },
     ),
-  toggle: (id: string, field: "featured" | "published") =>
-    run(`UPDATE portfolio SET ${field} = 1 - ${field}, updated_at = $at WHERE id = $id`, { id, at: now() }),
+  /** Tayang/sembunyikan; menyembunyikan juga mematikan unggulan */
+  setPublished: (id: string, on: boolean) =>
+    run(
+      `UPDATE portfolio SET published = $on, featured = CASE WHEN $on = 1 THEN featured ELSE 0 END, updated_at = $at
+       WHERE id = $id`,
+      { id, on: on ? 1 : 0, at: now() },
+    ),
+  setFeatured: (id: string, on: boolean) =>
+    run("UPDATE portfolio SET featured = $on, updated_at = $at WHERE id = $id", { id, on: on ? 1 : 0, at: now() }),
   remove: (id: string) => run("DELETE FROM portfolio WHERE id = $id", { id }),
 };
 
 /* ---------- inquiry ---------- */
 export const inquiries = {
   list: () => many("SELECT * FROM inquiries ORDER BY created_at DESC", toInquiry),
-  create: (d: Omit<Inquiry, "id" | "createdAt" | "status"> & { status?: string; id?: string; createdAt?: string }) =>
-    run(
+  get: (id: string) => one("SELECT * FROM inquiries WHERE id = $id", toInquiry, { id }),
+  async create(d: Omit<Inquiry, "id" | "createdAt" | "status"> & { status?: string; id?: string; createdAt?: string }) {
+    const id = d.id ?? newId();
+    await run(
       `INSERT INTO inquiries (id, name, email, company, service, budget, message, status, created_at)
        VALUES ($id, $name, $email, $company, $service, $budget, $message, $status, $createdAt)`,
       {
-        id: d.id ?? newId(),
+        id,
         name: d.name,
         email: d.email,
         company: d.company,
@@ -307,7 +325,9 @@ export const inquiries = {
         status: d.status ?? "NEW",
         createdAt: d.createdAt ?? now(),
       },
-    ),
+    );
+    return id;
+  },
   setStatus: (id: string, status: string) =>
     run("UPDATE inquiries SET status = $status WHERE id = $id", { id, status }),
   remove: (id: string) => run("DELETE FROM inquiries WHERE id = $id", { id }),
@@ -332,3 +352,12 @@ export const settings = {
   },
   setDiscord: (v: DiscordSettings) => setSetting("discord", v),
 };
+
+/* ---------- seed / impor ---------- */
+/** Kosongkan semua tabel data (dipakai `db:seed --force` dan `db:import --force`) */
+export async function wipeAll() {
+  await ready;
+  await client.executeMultiple(
+    "DELETE FROM tasks; DELETE FROM portfolio; DELETE FROM projects; DELETE FROM inquiries; DELETE FROM sessions; DELETE FROM users; DELETE FROM settings;",
+  );
+}

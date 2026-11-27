@@ -14,7 +14,7 @@ if (!url) {
 }
 
 export const client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN, intMode: "number" });
-export const isRemote = !!remote;
+const isRemote = !!remote;
 
 const migrations: string[] = [
   /* 1: skema awal */ `

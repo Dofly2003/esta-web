@@ -1,131 +1,656 @@
 ---
 import Dash from "../../layouts/Dash.astro";
 import PageHeader from "../../components/dash/PageHeader.astro";
-import Avatar from "../../components/dash/Avatar.astro";
-import { confirmAttr } from "../../components/dash/ui";
+import Person from "../../components/dash/Person.astro";
+import Badge from "../../components/dash/Badge.astro";
+import Icon from "../../components/dash/Icon.astro";
+import Panel from "../../components/dash/Panel.astro";
+import Field from "../../components/dash/Field.astro";
+import Options from "../../components/dash/Options.astro";
+import Disclosure from "../../components/dash/Disclosure.astro";
+import DeleteForm from "../../components/dash/DeleteForm.astro";
+import SectionHead from "../../components/dash/SectionHead.astro";
+import { errIn, invalid } from "../../components/dash/ui";
 import { api } from "../../lib/api";
-import { ROLES } from "@shared/constants";
-import type { DiscordSettings, User } from "@shared/types";
+import { BRAND, MIN_PASSWORD, ROLES, isAdmin } from "@shared/constants";
+import { ERR } from "@shared/messages";
+import type { TeamResponse } from "@shared/types";
 
 const me = Astro.locals.user!;
-const isAdmin = me.role === "ADMIN";
-const { users, discord } = await api<{ users: (User & { openTasks: number })[]; discord: DiscordSettings | null }>(
-  Astro,
-  "/api/team",
-);
+const admin = isAdmin(me);
+const { users, discord, unassigned, adminCount } = await api<TeamResponse>(Astro, "/api/team");
+const url = Astro.url;
+// error validasi ditampilkan di samping form asalnya (tiap form kembali ke #anchor-nya sendiri).
+// Form tambah anggota kembali dengan ?form=tambah agar "Discord ID tidak valid" tahu asalnya
+// (kode yang sama juga dipakai form Discord ID per baris → tampil di flash atas).
+const fromAdd = url.searchParams.get("form") === "tambah";
+const ADD_ERRS = ["email-taken", "user-incomplete", "user-name-required", "user-email-invalid", "user-password-short"] as const;
+const addErr = errIn(url, fromAdd ? [...ADD_ERRS, "discord-id-invalid"] : ADD_ERRS);
+const HOOK_ERRS = ["webhook-invalid", "webhook-missing", "discord-test-failed"] as const;
+const hookErr = errIn(url, HOOK_ERRS);
+const PASS_ERRS = ["password-wrong", "password-short"] as const;
+const passErr = errIn(url, PASS_ERRS);
+const msg = (code: string | null) => (code ? ERR[code as keyof typeof ERR] : null);
+const addMsg = (...codes: string[]) => (addErr && codes.includes(addErr) ? msg(addErr) : null);
+const nameErr = addMsg("user-incomplete", "user-name-required");
+const emailErr = addMsg("email-taken", "user-email-invalid");
+const newPassErr = addMsg("user-password-short");
+const newDcErr = addMsg("discord-id-invalid");
+const curPassErr = passErr === "password-wrong" ? msg(passErr) : null;
+const nextPassErr = passErr === "password-short" ? msg(passErr) : null;
+const lastAdmin = (u: { role: string }) => adminCount <= 1 && isAdmin(u);
+// setelah "Tambah anggota": ?baru=<id> → teks undangan siap disalin (password tidak pernah ditampilkan)
+const invited = admin ? users.find((u) => u.id === url.searchParams.get("baru")) : undefined;
+const inviteText = invited
+  ? [
+      `Halo ${invited.name}, akun dashboard ${BRAND.name} Anda sudah dibuat.`,
+      `Masuk di ${url.origin}/login dengan email ${invited.email} dan password awal yang diberikan admin.`,
+      "Setelah masuk, ganti password lewat nama Anda di kiri bawah → Ganti password saya.",
+    ].join("\n")
+  : "";
+// status notifikasi Discord (F30)
+const dcState = discord
+  ? discord.enabled && discord.webhookUrl
+    ? { tone: "ok" as const, text: "Aktif: notifikasi dikirim ke channel webhook ini." }
+    : discord.enabled
+      ? { tone: "warn" as const, text: "Mati: link webhook belum diisi." }
+      : { tone: "neutral" as const, text: "Mati: “Kirim notifikasi otomatis” tidak dicentang." }
+  : null;
 ---
 
-<Dash title="Tim & Akun">
-  <PageHeader title="Tim & Akun" subtitle="Anggota tim yang bisa login ke dashboard.">
-    <form method="post" action="/api/auth/logout"><button class="btn-ghost">Keluar</button></form>
-  </PageHeader>
+<Dash title="Tim & Akun" inlineErrors={[...ADD_ERRS, ...(fromAdd ? ["discord-id-invalid"] : []), ...HOOK_ERRS, ...PASS_ERRS]}>
+  {
+    admin && (
+      <a slot="actions" href="#h-add" class="btn btn-sm" data-focus="#new-name">
+        <Icon name="plus" class="ic-sm" />
+        Tambah anggota
+      </a>
+    )
+  }
 
-  <div class="grid gap-6 xl:grid-cols-3">
-    <section class="card overflow-hidden xl:col-span-2">
-      <ul class="divide-y divide-zinc-100">
+  <PageHeader title="Tim & Akun" subtitle="Anggota tim yang bisa login ke dashboard, beban kerja, dan notifikasi Discord." />
+
+  {
+    invited && (
+      <Panel id="h-invite" title={`Undangan untuk ${invited.name}`} class="invite">
+        <p slot="head" class="cap">Kirim teks ini ke {invited.name} (WhatsApp/email). Berikan password awal secara terpisah.</p>
+        <div class="panel-body form-stack">
+          <label for="invite-text" class="vh">
+            Teks undangan untuk {invited.name}
+          </label>
+          <textarea id="invite-text" class="input invite-text" rows="4" readonly data-select-all>{inviteText}</textarea>
+          <div class="invite-actions">
+            <button type="button" class="btn btn-sm js-only" data-copy="#invite-text" data-copied-label="Tersalin">
+              <Icon name="check" class="ic-sm" />
+              <span data-label>Salin teks</span>
+            </button>
+            <span class="cap nojs-only">Pilih teks di atas lalu salin.</span>
+            <a href="/dashboard/team" class="btn btn-sm btn-quiet">Tutup</a>
+          </div>
+        </div>
+      </Panel>
+    )
+  }
+
+  <div class="team">
+    <section class="sec" aria-labelledby="h-members">
+      <SectionHead id="h-members" title="Anggota tim" count={users.length} countSr="anggota" />
+      <div class="tbl-wrap team-wrap">
+        <table class="tbl tbl-cards is-md team-tbl">
+          <caption class="vh">Daftar anggota tim</caption>
+          <thead>
+            <tr>
+              <th scope="col">Anggota</th>
+              <th scope="col">Peran</th>
+              <th scope="col">Beban kerja</th>
+              <th scope="col">Discord ID</th>
+              {admin && <th scope="col"><span class="vh">Aksi</span></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {
+              users.map((u) => {
+                const rowId = `user-${u.id}`;
+                const back = `/dashboard/team#${rowId}`;
+                const self = u.id === me.id;
+                return (
+                  <tr id={rowId} data-row tabindex="-1">
+                    <td class="c-who">
+                      <Person name={u.name} sub={u.email} size="lg">
+                        {self && (
+                          <span slot="after" class="cap">
+                            {" "}
+                            (Anda)
+                          </span>
+                        )}
+                      </Person>
+                    </td>
+                    <td class="c-role">
+                      <Badge tone="none">{ROLES[u.role]}</Badge>
+                    </td>
+                    <td class="c-tasks">
+                      {u.openTasks > 0 ? (
+                        <span class="load">
+                          <a href={`/dashboard/tasks?filter=all&assignee=${u.id}`} class="link num">
+                            {u.openTasks} terbuka<span class="vh"> milik {u.name}</span>
+                          </a>
+                          {u.overdue > 0 && (
+                            <span class="v-crit num load-late">
+                              <Icon name="alert" class="ic-sm" />
+                              {u.overdue} lewat
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span class="t-2 num">0 terbuka</span>
+                      )}
+                    </td>
+                    <td class="c-discord">
+                      {admin || self ? (
+                        <form method="post" action={`/api/users/${u.id}/discord`} class="dc-form" data-keep={`dc-${u.id}`}>
+                          <input type="hidden" name="_back" value={back} />
+                          <label for={`dc-${u.id}`} class="dc-label cap">
+                            Discord ID<span class="vh"> {u.name}</span>
+                          </label>
+                          <span class="dc-row">
+                            <input
+                              id={`dc-${u.id}`}
+                              name="discordId"
+                              value={u.discordId}
+                              inputmode="numeric"
+                              placeholder="Belum diisi"
+                              spellcheck="false"
+                              autocomplete="off"
+                              class="input input-sm code"
+                              aria-describedby="dc-help"
+                            />
+                            <button type="submit" class="btn btn-sm">
+                              Simpan<span class="vh"> Discord ID {u.name}</span>
+                            </button>
+                          </span>
+                          {u.discordId && (
+                            <span class="cap dc-ok">
+                              <Icon name="check" class="ic-sm" />
+                              Terhubung
+                            </span>
+                          )}
+                        </form>
+                      ) : (
+                        <Badge tone={u.discordId ? "ok" : "neutral"}>{u.discordId ? "Terhubung" : "Belum diisi"}</Badge>
+                      )}
+                    </td>
+                    {admin && (
+                      <td class="c-act">
+                        {!self && (
+                          <details class="pop manage" name="manage-user">
+                            {/* tabel (>= 1024px): tombol ikon 28px; kartu: ikon + "Kelola" */}
+                            <summary class="btn btn-sm manage-btn" title={`Kelola akun ${u.name}`}>
+                              <Icon name="more" class="ic-sm" />
+                              <span class="manage-label">Kelola</span>
+                              <span class="vh"> akun {u.name}</span>
+                            </summary>
+                            <div class="pop-panel" role="group" aria-label={`Kelola akun ${u.name}`}>
+                              <div class="pop-head">
+                                <p class="h3 ell" aria-hidden="true">Kelola akun {u.name}</p>
+                                <button type="button" class="btn-icon" data-pop-dismiss aria-label="Tutup" title="Tutup">
+                                  <Icon name="x" />
+                                </button>
+                              </div>
+                              <form method="post" action={`/api/users/${u.id}/role`} class="form-stack" data-keep={`role-${u.id}`}>
+                                <input type="hidden" name="_back" value={back} />
+                                <Field id={`role-${u.id}`} label="Peran" hint={lastAdmin(u) ? "(satu-satunya admin)" : undefined}>
+                                  <select id={`role-${u.id}`} name="role" class="input" disabled={lastAdmin(u)}>
+                                    <Options from={ROLES} selected={u.role} />
+                                  </select>
+                                </Field>
+                                <div class="pop-foot">
+                                  <button type="submit" class="btn btn-sm" disabled={lastAdmin(u)}>
+                                    Ubah peran<span class="vh"> {u.name}</span>
+                                  </button>
+                                </div>
+                              </form>
+                              <form
+                                method="post"
+                                action={`/api/users/${u.id}/password`}
+                                class="form-stack pop-sep"
+                                data-keep={`reset-${u.id}`}
+                              >
+                                <input type="hidden" name="_back" value={back} />
+                                <Field id={`reset-${u.id}`} label="Password baru" hint={`(min. ${MIN_PASSWORD})`}>
+                                  <input
+                                    id={`reset-${u.id}`}
+                                    name="password"
+                                    type="password"
+                                    required
+                                    minlength={MIN_PASSWORD}
+                                    autocomplete="new-password"
+                                    class="input"
+                                    aria-describedby={`reset-${u.id}-note`}
+                                  />
+                                </Field>
+                                <p class="cap" id={`reset-${u.id}-note`}>
+                                  Berikan password ini ke {u.name}. Akunnya dikeluarkan dari semua perangkat.
+                                </p>
+                                <div class="pop-foot">
+                                  <button type="submit" class="btn btn-sm">
+                                    Reset password<span class="vh"> {u.name}</span>
+                                  </button>
+                                </div>
+                              </form>
+                              {lastAdmin(u) ? (
+                                <p class="cap pop-sep">Satu-satunya admin tidak bisa dihapus.</p>
+                              ) : (
+                                <DeleteForm
+                                  action={`/api/users/${u.id}/delete`}
+                                  confirm={`Hapus akun ${u.name}? ${u.assignedOpenTasks} tugas terbuka dan ${u.ledProjects} proyek jadi tanpa penanggung jawab. Tindakan ini tidak bisa dibatalkan.`}
+                                  label="Hapus akun"
+                                  srSuffix={` ${u.name}`}
+                                  size="sm"
+                                  quiet
+                                  class="pop-sep"
+                                />
+                              )}
+                            </div>
+                          </details>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })
+            }
+          </tbody>
+        </table>
+      </div>
+      <p class="cap team-notes">
+        <span id="dc-help">Discord ID dipakai untuk me-mention anggota saat tugas diberikan. Kosongkan lalu Simpan untuk menghapusnya.</span>
         {
-          users.map((u) => (
-            <li class="flex flex-wrap items-center gap-3 p-4">
-              <Avatar name={u.name} size="h-10 w-10" />
-              <div class="min-w-0 flex-1">
-                <p class="font-semibold">
-                  {u.name} {u.id === me.id && <span class="text-xs font-normal text-zinc-400">(Anda)</span>}
-                </p>
-                <p class="truncate text-xs text-zinc-500">{u.email}</p>
-              </div>
-              <span class="badge bg-zinc-100 text-zinc-600">{ROLES[u.role]}</span>
-              <span class="text-xs text-zinc-500">{u.openTasks} tugas terbuka</span>
-              {isAdmin && u.id !== me.id && (
-                <form method="post" action={`/api/users/${u.id}/delete`}>
-                  <button class="btn-danger px-2 py-1 text-xs" {...confirmAttr(`Hapus akun ${u.name}?`)}>Hapus</button>
-                </form>
-              )}
-              {(isAdmin || u.id === me.id) && (
-                <form method="post" action={`/api/users/${u.id}/discord`} class="flex w-full flex-wrap items-center gap-2">
-                  <span class:list={["badge", u.discordId ? "bg-indigo-50 text-indigo-700" : "bg-zinc-100 text-zinc-500"]}>
-                    {u.discordId ? "Discord ✓" : "Discord —"}
-                  </span>
-                  <input
-                    name="discordId"
-                    value={u.discordId}
-                    inputmode="numeric"
-                    placeholder="Discord ID (angka), mis. 123456789012345678"
-                    aria-label={`Discord ID ${u.name}`}
-                    class="input h-8 max-w-64 flex-1 py-1 text-xs"
-                  />
-                  <button class="btn-ghost h-8 px-3 py-1 text-xs">Simpan</button>
-                </form>
-              )}
-            </li>
-          ))
+          unassigned > 0 && (
+            <a href="/dashboard/tasks?filter=all&assignee=none" class="link">
+              {unassigned} tugas tanpa penanggung jawab
+            </a>
+          )
         }
-      </ul>
+      </p>
     </section>
 
-    <div class="space-y-6">
+    <div class="team-panels">
       {
-        isAdmin && discord && (
-          <section class="card p-5">
-            <h2 class="font-bold">🔔 Notifikasi Discord</h2>
-            <p class="mb-4 mt-1 text-xs text-zinc-500">
-              Bot mengirim pesan ke channel Discord saat tugas diberikan ke seseorang atau saat seseorang dijadikan PJ proyek.
+        admin && discord && (
+          <Panel id="h-discord" title="Notifikasi Discord">
+            <p slot="head" class="cap">
+              Bot mengirim pesan ke channel Discord saat tugas diberikan ke seseorang, saat seseorang dijadikan penanggung jawab proyek,
+              dan saat inquiry baru masuk dari website.
             </p>
-            <form method="post" action="/api/settings/discord" class="space-y-3">
-              <div>
-                <label class="label">Link webhook channel Discord</label>
-                <input name="webhookUrl" type="url" value={discord.webhookUrl} placeholder="https://discord.com/api/webhooks/…" class="input" autocomplete="off" />
+            {dcState && (
+              <p class="panel-body cap dc-state" id="dc-state">
+                {dcState.tone === "ok" ? (
+                  <span class="dot tone-ok" aria-hidden="true" />
+                ) : (
+                  <Icon name="alert" class:list={["ic-sm", dcState.tone === "warn" && "v-warn"]} />
+                )}
+                <span class:list={[dcState.tone === "warn" && "v-warn"]}>{dcState.text}</span>
+              </p>
+            )}
+            <form method="post" action="/api/settings/discord" id="f-discord" data-keep="discord" data-guard>
+              <input type="hidden" name="_back" value="/dashboard/team#h-discord" />
+              <div class="panel-body">
+                <Field id="webhookUrl" label="Link webhook channel Discord" error={msg(hookErr)}>
+                  <input
+                    id="webhookUrl"
+                    name="webhookUrl"
+                    type="url"
+                    value={discord.webhookUrl}
+                    placeholder="https://discord.com/api/webhooks/…"
+                    class="input"
+                    autocomplete="off"
+                    spellcheck="false"
+                    autocapitalize="none"
+                    {...invalid("webhookUrl", hookErr)}
+                  />
+                </Field>
+                <label class="chk">
+                  <input type="checkbox" name="enabled" checked={discord.enabled} />
+                  <span>Kirim notifikasi otomatis</span>
+                </label>
               </div>
-              <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="enabled" checked={discord.enabled} /> Kirim notifikasi otomatis
-              </label>
-              <button class="btn-primary">Simpan</button>
+              <div class="panel-foot">
+                <button type="submit" class="btn">Simpan</button>
+                <button type="submit" formaction="/api/settings/discord/test" class="btn" data-pending-label="Mengirim…">
+                  Kirim pesan uji
+                </button>
+                <span class="cap">Pesan uji memakai link yang sedang terisi.</span>
+              </div>
             </form>
-            <form method="post" action="/api/settings/discord/test" class="mt-3">
-              <button class="btn-ghost w-full">Kirim pesan uji</button>
-            </form>
-            <details class="mt-4 rounded-lg bg-zinc-50 p-3 text-xs text-zinc-600">
-              <summary class="font-semibold text-zinc-700">Cara membuat link webhook</summary>
-              <ol class="mt-2 list-decimal space-y-1 pl-4">
+            <Disclosure icon="info" label="Cara membuat link webhook" class="help sep" chevSize="md">
+              <ol class="help-steps small t-2">
                 <li>Di Discord, klik kanan channel (misal #tugas) → <b>Edit Channel</b>.</li>
                 <li><b>Integrations</b> → <b>Webhooks</b> → <b>New Webhook</b>.</li>
                 <li>Klik webhook-nya → <b>Copy Webhook URL</b>, tempel di atas, lalu <b>Simpan</b>.</li>
               </ol>
-            </details>
-            <details class="mt-2 rounded-lg bg-zinc-50 p-3 text-xs text-zinc-600">
-              <summary class="font-semibold text-zinc-700">Supaya orangnya di-mention (HP berbunyi)</summary>
-              <ol class="mt-2 list-decimal space-y-1 pl-4">
+            </Disclosure>
+            <Disclosure
+              icon="info"
+              label="Supaya orangnya di-mention (HP berbunyi)"
+              class="help sep"
+              chevSize="md"
+            >
+              <ol class="help-steps small t-2">
                 <li>Discord → <b>User Settings</b> → <b>Advanced</b> → aktifkan <b>Developer Mode</b>.</li>
                 <li>Klik kanan nama orangnya → <b>Copy User ID</b> (angka 17–20 digit).</li>
-                <li>Tempel di kolom "Discord ID" anggota tersebut di daftar sebelah.</li>
+                <li>Tempel di kolom “Discord ID” anggota tersebut di daftar anggota di atas.</li>
               </ol>
-            </details>
-          </section>
+            </Disclosure>
+          </Panel>
         )
       }
+
       {
-        isAdmin && (
-          <section class="card p-5">
-            <h2 class="mb-4 font-bold">Tambah anggota</h2>
-            <form method="post" action="/api/users" class="space-y-3">
-              <input name="name" required placeholder="Nama" class="input" />
-              <input name="email" type="email" required placeholder="Email" class="input" />
-              <input name="password" type="password" required minlength="8" placeholder="Password awal (min. 8)" class="input" autocomplete="new-password" />
-              <select name="role" class="input">
-                {Object.entries(ROLES).map(([k, v]) => <option value={k} selected={k === "MEMBER"}>{v}</option>)}
-              </select>
-              <button class="btn-primary">Tambah akun</button>
+        admin && (
+          <Panel id="h-add" title="Tambah anggota">
+            <form method="post" action="/api/users" class="panel-body" data-keep="add-user" data-guard>
+              <input type="hidden" name="_back" value="/dashboard/team?form=tambah#h-add" />
+              <Field id="new-name" label="Nama" required error={nameErr}>
+                <input id="new-name" name="name" required maxlength="120" class="input" autocomplete="off" {...invalid("new-name", nameErr)} />
+              </Field>
+              <Field id="new-email" label="Email" required error={emailErr}>
+                <input
+                  id="new-email"
+                  name="email"
+                  type="email"
+                  required
+                  class="input"
+                  autocomplete="off"
+                  spellcheck="false"
+                  autocapitalize="none"
+                  {...invalid("new-email", emailErr)}
+                />
+              </Field>
+              <Field id="new-pass" label="Password awal" required hint={`(min. ${MIN_PASSWORD})`} error={newPassErr}>
+                <input
+                  id="new-pass"
+                  name="password"
+                  type="password"
+                  required
+                  minlength={MIN_PASSWORD}
+                  class="input"
+                  autocomplete="new-password"
+                  {...invalid("new-pass", newPassErr)}
+                />
+              </Field>
+              <Field id="new-role" label="Peran">
+                <select id="new-role" name="role" class="input">
+                  <Options from={ROLES} selected="MEMBER" />
+                </select>
+              </Field>
+              <Field id="new-dc" label="Discord ID" hint="(opsional, 17–20 digit)" error={newDcErr}>
+                <input
+                  id="new-dc"
+                  name="discordId"
+                  inputmode="numeric"
+                  pattern="[0-9]{17,20}"
+                  title="17–20 digit angka (bukan username)"
+                  spellcheck="false"
+                  autocomplete="off"
+                  class="input code"
+                  {...invalid("new-dc", newDcErr)}
+                />
+              </Field>
+              <div>
+                <button type="submit" class="btn-primary">
+                  <Icon name="plus" class="ic-sm" />
+                  Tambah anggota
+                </button>
+              </div>
             </form>
-          </section>
+          </Panel>
         )
       }
-      <section class="card p-5">
-        <h2 class="mb-4 font-bold">Ganti password saya</h2>
-        <form method="post" action="/api/account/password" class="space-y-3">
-          <input name="current" type="password" required placeholder="Password lama" class="input" autocomplete="current-password" />
-          <input name="next" type="password" required minlength="8" placeholder="Password baru (min. 8)" class="input" autocomplete="new-password" />
-          <button class="btn-primary">Ganti password</button>
+
+      <Panel id="h-pass" title="Ganti password saya">
+        <form method="post" action="/api/account/password" class="panel-body" data-keep="own-password">
+          <input type="hidden" name="_back" value="/dashboard/team#h-pass" />
+          <Field id="pw-current" label="Password lama" required error={curPassErr}>
+            <input
+              id="pw-current"
+              name="current"
+              type="password"
+              required
+              class="input"
+              autocomplete="current-password"
+              {...invalid("pw-current", curPassErr)}
+            />
+          </Field>
+          <Field id="pw-next" label="Password baru" required hint={`(min. ${MIN_PASSWORD})`} error={nextPassErr}>
+            <input
+              id="pw-next"
+              name="next"
+              type="password"
+              required
+              minlength={MIN_PASSWORD}
+              class="input"
+              autocomplete="new-password"
+              {...invalid("pw-next", nextPassErr)}
+            />
+          </Field>
+          <div>
+            <button type="submit" class="btn">Ganti password</button>
+          </div>
         </form>
-      </section>
+      </Panel>
     </div>
   </div>
 </Dash>
+
+<script>
+  // undangan: tombol Salin (tanpa JS: teks bisa dipilih manual)
+  document.querySelectorAll<HTMLButtonElement>("[data-copy]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const src = document.querySelector<HTMLTextAreaElement>(btn.dataset.copy!);
+      if (!src) return;
+      const label = btn.querySelector("[data-label]");
+      try {
+        await navigator.clipboard.writeText(src.value);
+        if (label) label.textContent = btn.dataset.copiedLabel ?? "Tersalin";
+      } catch {
+        src.focus();
+        src.select();
+      }
+    });
+  });
+  document.querySelectorAll<HTMLTextAreaElement>("[data-select-all]").forEach((t) => t.addEventListener("focus", () => t.select()));
+</script>
+
+<style>
+  .invite {
+    margin-bottom: var(--s-6);
+  }
+  .invite-text {
+    resize: vertical;
+    white-space: pre-wrap;
+  }
+  .invite-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+  }
+  /* status Discord: titik/ikon di baris pertama, teks membungkus di sampingnya */
+  .dc-state {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: var(--gap-inline);
+    padding-bottom: 0;
+  }
+  .dc-state :global(.dot) {
+    margin-top: 4px;
+  }
+  .dc-state :global(.ic) {
+    margin-top: 1px;
+  }
+  .team {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-8);
+  }
+  /* panel pengaturan: berdampingan bila muat (kolom 320px+), sejajar di atas */
+  .team-panels {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: var(--s-6);
+    align-items: start;
+  }
+  /* popover "Kelola" harus bisa keluar dari bingkai tabel */
+  .team-wrap {
+    overflow: visible;
+  }
+  .c-who {
+    min-width: 0;
+  }
+  .c-tasks {
+    white-space: nowrap;
+  }
+  .load {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+  }
+  .load-late {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
+    font-weight: var(--fw-medium);
+  }
+  .dc-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+  }
+  .dc-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+  .dc-form .input {
+    min-width: 0;
+    width: 8.5rem;
+  }
+  .dc-ok {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
+  }
+  .dc-ok :global(.ic) {
+    color: var(--ok);
+  }
+  .c-act {
+    text-align: right;
+  }
+  .team-notes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-1) var(--s-4);
+  }
+  /* tabel (>= 1024px): kolom anggota mengambil sisa lebar dan memotong nama/email (tidak pernah melebarkan tabel) */
+  @media (min-width: 1024px) {
+    .team-tbl td {
+      padding-top: var(--s-3);
+      padding-bottom: var(--s-3);
+    }
+    .c-who {
+      width: 100%;
+      max-width: 0;
+    }
+    .c-role,
+    .c-tasks,
+    .c-discord,
+    .c-act {
+      width: 1%;
+      white-space: nowrap;
+    }
+    /* Kelola = tombol ikon 28px (nama lengkap lewat teks pembaca layar & tooltip) */
+    .manage-btn {
+      width: var(--hit-sm);
+      padding: 0;
+    }
+    .manage-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+    /* label Discord ID terlihat hanya pada tampilan kartu (kepala kolom tampil di layar lebar) */
+    .dc-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+  }
+
+  /* Bantuan di panel Discord (<Disclosure class="help sep">: summary dirender komponen → :global) */
+  .team-panels :global(.help > summary.disclose) {
+    padding-top: var(--s-2);
+    padding-bottom: var(--s-2);
+    font-size: var(--fs-13);
+    color: var(--text);
+  }
+  .help-steps {
+    list-style: decimal;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    padding: 0 var(--s-5) var(--s-4) var(--s-10);
+  }
+  .help-steps b {
+    color: var(--text);
+    font-weight: var(--fw-medium);
+  }
+
+  /* < 1024px: tiap anggota jadi kartu (.tbl-cards.is-md); di sini penempatan sel */
+  @media (max-width: 1023px) {
+    .c-who {
+      grid-column: 1;
+    }
+    .c-role {
+      grid-column: 2;
+      grid-row: 1;
+      align-self: center;
+    }
+    .team-tbl .c-tasks {
+      grid-column: 1 / -1;
+      font-size: var(--fs-13);
+    }
+    .c-discord {
+      grid-column: 1;
+    }
+    .dc-form .input {
+      flex: 1;
+      width: auto;
+    }
+    .team-tbl .c-act {
+      grid-column: 2;
+      align-self: end;
+      text-align: right;
+    }
+    .team-tbl .c-act:empty {
+      display: none;
+    }
+  }
+  @media (max-width: 639px) {
+    .c-discord {
+      grid-column: 1 / -1;
+    }
+    .team-tbl .c-act {
+      grid-column: 1 / -1;
+      text-align: left;
+    }
+  }
+</style>

@@ -1,0 +1,56 @@
+---
+// Ringkasan: section "Inquiry baru" (maks. beberapa baris + tautan ke inbox). Komponen sendiri supaya
+// halaman bisa menaruhnya di kolom kanan atau di bawah daftar proyek (kolom seimbang, lihat index.astro).
+import SectionHead from "./SectionHead.astro";
+import EmptyState from "./EmptyState.astro";
+import { REPLY_WITHIN_HOURS } from "@shared/constants";
+import { agoText, fmtDate, hoursSince } from "@shared/format";
+import type { DashboardSummary } from "@shared/types";
+
+interface Props {
+  inquiries: DashboardSummary["inquiries"];
+  total: number;
+}
+const { inquiries, total } = Astro.props;
+const waitDays = (iso: string) => Math.max(1, Math.floor(hoursSince(iso) / 24));
+---
+
+<section class="sec" aria-labelledby="h-inq">
+  <SectionHead
+    id="h-inq"
+    title="Inquiry baru"
+    count={total}
+    countSr="inquiry baru"
+    href="/dashboard/inbox?status=NEW"
+    linkLabel={total > inquiries.length ? `Lihat semua (${total})` : "Buka inbox"}
+  />
+  <div class="panel">
+    {
+      inquiries.length === 0 ? (
+        <EmptyState compact title="Belum ada inquiry baru." />
+      ) : (
+        <ul class="rows">
+          {inquiries.map((q) => {
+            const late = hoursSince(q.createdAt) >= REPLY_WITHIN_HOURS;
+            return (
+              <li>
+                <a href={`/dashboard/inbox?status=NEW#inq-${q.id}`} class="trow">
+                  <span class="trow-title ell">
+                    {q.name}
+                    {q.company && <span class="t-2"> · {q.company}</span>}
+                  </span>
+                  <span class:list={["cap num", late && "v-warn"]} title={fmtDate(q.createdAt)}>
+                    {late ? `lewat 1×24 jam · ${waitDays(q.createdAt)} hari` : agoText(q.createdAt)}
+                  </span>
+                  <span class="meta">
+                    <span class="ell">{q.message}</span>
+                  </span>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )
+    }
+  </div>
+</section>
