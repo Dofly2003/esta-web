@@ -8,7 +8,7 @@ import { users } from "../server/repo";
  */
 export async function openForWrite(redo: string) {
   const force = process.argv.includes("--force");
-  await ready;
+  await ready();
   if ((await users.count()) > 0 && !force) {
     console.error(`Database sudah berisi data. Tambahkan --force untuk menghapus dan ${redo}.`);
     process.exit(1);

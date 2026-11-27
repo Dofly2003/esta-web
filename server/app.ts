@@ -10,7 +10,13 @@ type Server = { requestIP(req: Request): { address: string } | null };
 
 export function createFetch(pages: PageHandler | null, clientDir = join(process.cwd(), "dist", "client")) {
   async function serveStatic(pathname: string) {
-    const path = normalize(join(clientDir, decodeURIComponent(pathname)));
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(pathname);
+    } catch {
+      return null; // escape % rusak: bukan file statis (halaman Astro yang menjawab, mis. 404)
+    }
+    const path = normalize(join(clientDir, decoded));
     if (!path.startsWith(clientDir) || pathname.endsWith("/")) return null;
     const file = Bun.file(path);
     if (!(await file.exists())) return null;

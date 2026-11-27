@@ -71,6 +71,8 @@ export type Inquiry = {
 };
 
 export type DiscordSettings = { webhookUrl: string; enabled: boolean };
+/** Setelan Discord untuk form admin: nilai tersimpan saja + fromEnv = memakai webhook cadangan dari env server */
+export type DiscordForm = DiscordSettings & { fromEnv: boolean };
 
 /* ---- respons gabungan ---- */
 export type TaskWithProject = Task & { projectName: string };
@@ -183,7 +185,7 @@ export type PortfolioEditResponse = {
 /** GET /api/team (discord hanya untuk admin) */
 export type TeamResponse = {
   users: TeamMember[];
-  discord: DiscordSettings | null;
+  discord: DiscordForm | null;
   /** tugas hidup tanpa penanggung jawab */
   unassigned: number;
   /** jumlah admin (UI: jangan tawarkan turunkan/hapus admin terakhir) */

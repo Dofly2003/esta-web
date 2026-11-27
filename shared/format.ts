@@ -208,6 +208,18 @@ export function initials(name: string) {
 }
 
 /* ---- validasi ---- */
+/** Link http(s) utuh dengan host; `relative` = boleh juga path di website ini ("/gambar.jpg").
+ * Ditolak: "//host" dan "/\host" (protocol-relative: browser membukanya sebagai host lain), spasi di path
+ * relatif, dan skema lain (javascript:, data:, ftp:, …). */
+export function isLink(v: string, relative = false) {
+  if (relative && v.startsWith("/")) return !v.startsWith("//") && !/[\s\\]/.test(v);
+  try {
+    const u = new URL(v);
+    return (u.protocol === "https:" || u.protocol === "http:") && !!u.hostname;
+  } catch {
+    return false;
+  }
+}
 export const isEmail = (v: string) => /^\S+@\S+\.\S+$/.test(v);
 /** Email untuk disimpan / dicari: tanpa spasi tepi, huruf kecil */
 export const normEmail = (v: string) => v.trim().toLowerCase();

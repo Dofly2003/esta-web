@@ -58,7 +58,8 @@ export const OK = {
   "user-role-unchanged": "Peran tidak berubah.",
   "discord-id-saved": "Discord ID disimpan.",
   "discord-id-cleared": "Discord ID dihapus.",
-  "password-changed": "Password diubah.",
+  "password-changed": "Password diubah. Perangkat lain yang masih masuk dengan akun ini sudah dikeluarkan.",
+  "sessions-ended": "Anda sudah dikeluarkan dari semua perangkat lain.",
   // Discord
   "discord-saved": "Pengaturan Discord disimpan.",
   "discord-cleared": "Webhook dikosongkan, notifikasi Discord mati.",
@@ -82,6 +83,7 @@ export const ERR = {
   stale: "Data ini sudah diubah di tab lain atau oleh anggota lain. Isian Anda dipulihkan; periksa lalu simpan lagi.",
   "status-invalid": "Status tidak dikenal.",
   "date-invalid": "Tanggal tidak valid (tahun 2000–2100).",
+  "too-long": "Isian terlalu panjang. Persingkat lalu simpan lagi.",
   // proyek & tugas
   "project-not-found": "Proyek tidak ditemukan.",
   "project-required": "Nama proyek dan klien wajib diisi.",

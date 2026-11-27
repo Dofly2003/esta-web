@@ -16,7 +16,7 @@ import Options from "./Options.astro";
 import StatusSelect from "./StatusSelect.astro";
 import DeleteForm from "./DeleteForm.astro";
 import { here } from "./ui";
-import { PRIORITY, TASK_STATUS } from "@shared/constants";
+import { MAX_LEN, PRIORITY, TASK_STATUS } from "@shared/constants";
 import type { Task, User } from "@shared/types";
 
 interface Props {
@@ -69,10 +69,10 @@ const f = `te-${t.id}`;
         <input type="hidden" name="_back" value={back} />
         <input type="hidden" name="version" value={t.updatedAt} />
         <Field id={`${f}-title`} label="Judul" required>
-          <input id={`${f}-title`} name="title" value={t.title} required class="input" autocomplete="off" />
+          <input id={`${f}-title`} name="title" value={t.title} required maxlength={MAX_LEN.taskTitle} class="input" autocomplete="off" />
         </Field>
         <Field id={`${f}-desc`} label="Catatan" hint="(opsional)">
-          <textarea id={`${f}-desc`} name="description" rows="2" class="input">{t.description}</textarea>
+          <textarea id={`${f}-desc`} name="description" rows="2" maxlength={MAX_LEN.description} class="input">{t.description}</textarea>
         </Field>
         <div class="task-form-grid">
           <Field id={`${f}-prio`} label="Prioritas">

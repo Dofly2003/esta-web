@@ -25,11 +25,13 @@ import type {
 } from "../shared/types";
 import {
   ACTIVE_PROJECT_STATUSES,
+  coverColorOr,
   DEFAULT_COVER,
   INQUIRY_STATUS_ALL,
   isActiveProject,
   isAdmin,
   MAX_FEATURED,
+  MAX_LEN,
   MAX_TASK_LINES,
   MIN_PASSWORD,
   portfolioCategory,
@@ -50,6 +52,7 @@ import {
   isDueWithin,
   isEmail,
   isLate,
+  isLink,
   liveTasks,
   normEmail,
   openTasks,
@@ -68,8 +71,18 @@ import {
   type ErrCode,
   type OkCode,
 } from "../shared/messages";
-import { currentUser, endSession, hashPassword, hasSessionCookie, login, startSession, verifyPassword } from "./auth";
 import {
+  currentUser,
+  endSession,
+  hashPassword,
+  hasSessionCookie,
+  login,
+  sessionId,
+  startSession,
+  verifyPassword,
+} from "./auth";
+import {
+  INQUIRY_NOTIFY_CAP_MS,
   isWebhookUrl,
   notifyInquiry,
   notifyProjectLead,
@@ -77,7 +90,18 @@ import {
   notifyTasksAssigned,
   sendTest,
 } from "./discord";
-import { inquiries, portfolio, projects, settings, tasks, users, type ProjectInput, type TaskInput } from "./repo";
+import { FailWindow } from "./limits";
+import {
+  inquiries,
+  portfolio,
+  projects,
+  sessions,
+  settings,
+  tasks,
+  users,
+  type ProjectInput,
+  type TaskInput,
+} from "./repo";
 
 /* ================= util ================= */
 type Fields = { get(k: string): string; has(k: string): boolean };
@@ -124,8 +148,9 @@ async function readBody(req: Request): Promise<Fields> {
     const obj = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     for (const [k, v] of Object.entries(obj)) map.set(k, v === true ? "on" : v == null ? "" : String(v));
   } else if (type.includes("form")) {
-    const fd = await req.formData();
-    for (const [k, v] of fd.entries()) if (typeof v === "string") map.set(k, v);
+    // body rusak (mis. multipart tanpa boundary) = form kosong → error validasi biasa, bukan 500
+    const fd = await req.formData().catch(() => null);
+    for (const [k, v] of fd?.entries() ?? []) if (typeof v === "string") map.set(k, v);
   }
   return { get: (k) => (map.get(k) ?? "").trim(), has: (k) => map.has(k) };
 }
@@ -210,15 +235,10 @@ function dateField(v: string, code: ErrCode = "date-invalid") {
   }
   return v;
 }
-/** Link http(s) utuh; `relative` = boleh juga path di website ini ("/gambar.jpg") */
-function isLink(v: string, relative = false) {
-  if (relative && v.startsWith("/") && !v.startsWith("//") && !/\s/.test(v)) return true;
-  try {
-    const u = new URL(v);
-    return (u.protocol === "https:" || u.protocol === "http:") && !!u.hostname;
-  } catch {
-    return false;
-  }
+/** Teks dengan panjang maksimum (MAX_LEN); lebih panjang = 400 too-long, tidak dipotong diam-diam */
+function within(v: string, max: number) {
+  if (v.length > max) throw new HttpError(400, "too-long");
+  return v;
 }
 
 /** Form edit membawa `version` (updatedAt saat dibuka). Beda = data sudah diubah tempat lain → tolak (409 stale). */
@@ -249,24 +269,15 @@ const validUser = (id: string | null) => existing(id, users.get);
 const LOGIN_WINDOW = 15 * 60_000;
 const LIMIT_PER_ACCOUNT = 10;
 const LIMIT_PER_IP = 50;
-const loginFails = new Map<string, { n: number; until: number }>();
-const blocked = (key: string, limit: number) => {
-  const e = loginFails.get(key);
-  return !!e && e.n >= limit && e.until > Date.now();
-};
-function failOnce(key: string, limit: number) {
-  const now = Date.now();
-  const e = loginFails.get(key);
-  if (!e || e.until < now) loginFails.set(key, { n: 1, until: now + LOGIN_WINDOW });
-  else if (e.n < limit) e.n++;
-  if (loginFails.size > 5000) for (const [k, v] of loginFails) if (v.until < now) loginFails.delete(k);
-}
+/** Password lebih panjang dari ini tidak di-hash sama sekali (langsung gagal), agar tidak bisa dipakai membebani CPU */
+const MAX_LOGIN_PASSWORD = 1024;
+const loginFails = new FailWindow(LOGIN_WINDOW);
 const accountKey = (ip: string, email: string) => `${ip}|${email}`;
 const loginBlocked = (ip: string, email: string) =>
-  blocked(accountKey(ip, email), LIMIT_PER_ACCOUNT) || blocked(ip, LIMIT_PER_IP);
+  loginFails.blocked(accountKey(ip, email), LIMIT_PER_ACCOUNT) || loginFails.blocked(ip, LIMIT_PER_IP);
 function loginFailed(ip: string, email: string) {
-  failOnce(accountKey(ip, email), LIMIT_PER_ACCOUNT);
-  failOnce(ip, LIMIT_PER_IP);
+  loginFails.fail(accountKey(ip, email), LIMIT_PER_ACCOUNT);
+  loginFails.fail(ip, LIMIT_PER_IP);
 }
 
 /* ============ notifikasi Discord ============ */
@@ -296,6 +307,8 @@ async function projectInput(f: Fields): Promise<ProjectInput> {
   if (!name && !client) throw new HttpError(400, "project-required");
   if (!name) throw new HttpError(400, "project-name-required");
   if (!client) throw new HttpError(400, "project-client-required");
+  within(name, MAX_LEN.projectName);
+  within(client, MAX_LEN.client);
   const budget = parseRupiah(f.get("budget"));
   if (budget === "invalid") throw new HttpError(400, "budget-invalid");
   const startDate = dateField(f.get("startDate"));
@@ -306,7 +319,7 @@ async function projectInput(f: Fields): Promise<ProjectInput> {
     client,
     type: oneOf(PROJECT_TYPES, f.get("type"), "WEBSITE"),
     status: pick(PROJECT_STATUS, f.get("status"), "PLANNING"),
-    description: f.get("description"),
+    description: within(f.get("description"), MAX_LEN.description),
     budget,
     startDate,
     dueDate,
@@ -314,10 +327,11 @@ async function projectInput(f: Fields): Promise<ProjectInput> {
   };
 }
 
+/** Isian tugas. Panjang judul dicek pemanggil (tambah: per baris; ubah: seluruh judul). */
 async function taskInput(f: Fields): Promise<Omit<TaskInput, "projectId">> {
   return {
     title: f.get("title"),
-    description: f.get("description"),
+    description: within(f.get("description"), MAX_LEN.description),
     status: pick(TASK_STATUS, f.get("status"), "TODO"),
     priority: oneOf(PRIORITY, f.get("priority"), "MEDIUM"),
     dueDate: dateField(f.get("dueDate"), "task-date-invalid"),
@@ -467,7 +481,9 @@ on("GET", "/api/public/portfolio/:slug", async (c) => {
 on("POST", "/api/public/inquiries", async (c) => {
   const f = await c.body();
   const to = "/contact";
-  if (f.get("website")) return done(c, { ok: "inquiry-thanks", to }); // honeypot
+  const sent = () => done(c, { ok: "inquiry-sent", to: "/contact?terkirim=1" });
+  // honeypot: balasan sama persis dengan kiriman sungguhan (bot tidak bisa membedakan), tapi tidak disimpan
+  if (f.get("website")) return sent();
   const name = f.get("name");
   const email = f.get("email");
   const message = f.get("message");
@@ -483,9 +499,11 @@ on("POST", "/api/public/inquiries", async (c) => {
     message,
   };
   const id = await inquiries.create(d);
-  // fire-and-forget: tidak ditunggu (form publik tidak melambat); notifyInquiry tidak pernah melempar error
-  void notifyInquiry({ id, ...d });
-  return done(c, { ok: "inquiry-sent", to: "/contact?terkirim=1" });
+  // Ditunggu, tapi maks. INQUIRY_NOTIFY_CAP_MS: di serverless (Vercel) instance bisa dibekukan setelah respons
+  // terkirim, jadi kiriman yang tidak ditunggu bisa hilang. Lewat batas atau gagal → hanya dicatat di log,
+  // form tetap sukses (notifyInquiry tidak pernah melempar error).
+  await notifyInquiry({ id, ...d }, INQUIRY_NOTIFY_CAP_MS);
+  return sent();
 });
 
 /* ---------- auth ---------- */
@@ -496,12 +514,13 @@ on("POST", "/api/auth/login", async (c) => {
   // tanpa JS, email tetap terisi setelah gagal (password tidak pernah dibawa)
   const back = `/login?next=${encodeURIComponent(target)}${email ? `&email=${encodeURIComponent(email.slice(0, 200))}` : ""}`;
   if (loginBlocked(c.ip, email)) return done(c, { err: "login-blocked", to: back });
-  const user = await login(email, f.get("password"));
+  const password = f.get("password");
+  const user = password.length <= MAX_LOGIN_PASSWORD ? await login(email, password) : null;
   if (!user) {
     loginFailed(c.ip, email);
     return done(c, { err: "login-failed", to: back });
   }
-  loginFails.delete(accountKey(c.ip, email));
+  loginFails.clear(accountKey(c.ip, email));
   return done(c, { to: target, headers: { "Set-Cookie": await startSession(user.id) } });
 });
 
@@ -742,6 +761,7 @@ on("POST", "/api/tasks", async (c) => {
     .filter(Boolean);
   if (!titles.length) return done(c, { err: "task-title-required", to: back });
   if (titles.length > MAX_TASK_LINES) return done(c, { err: "task-too-many", to: back });
+  for (const t of titles) within(t, MAX_LEN.taskTitle);
   const base = await taskInput(f);
   const ids: string[] = [];
   for (const title of titles) ids.push(await tasks.create({ ...base, title, projectId: project.id }));
@@ -775,6 +795,7 @@ on("POST", "/api/tasks/:id", async (c) => {
   checkVersion(f, before.updatedAt);
   const d = await taskInput(f);
   if (!d.title) return done(c, { err: "task-edit-title-required", to: backPath(c, f) });
+  within(d.title, MAX_LEN.taskTitle);
   await tasks.update(before.id, d);
   await announceTask({ ...d, id: before.id, projectId: before.projectId }, before.assigneeId, me);
   return done(c, { ok: "task-saved", to: backPath(c, f) });
@@ -833,6 +854,7 @@ async function savePortfolio(c: Ctx, id: string | null) {
   const fail = (err: ErrCode, query?: Record<string, string>) => done(c, { err, to: back, query });
   const title = f.get("title");
   if (!title) return fail("pf-title-required");
+  within(title, MAX_LEN.pfTitle);
 
   // slug: kosong = otomatis dari judul (dibuat unik); diisi tapi sudah dipakai = error + saran (tidak diganti diam-diam)
   const rawSlug = f.get("slug");
@@ -850,9 +872,9 @@ async function savePortfolio(c: Ctx, id: string | null) {
   if (yearRaw && (!/^\d{4}$/.test(yearRaw) || year < 1990 || year > currentYear() + 1)) return fail("pf-year-invalid");
   const sortRaw = f.get("sortOrder");
   if (sortRaw && !/^-?\d{1,6}$/.test(sortRaw)) return fail("pf-sort-invalid");
-  const imageUrl = f.get("imageUrl");
+  const imageUrl = within(f.get("imageUrl"), MAX_LEN.url);
   if (imageUrl && !isLink(imageUrl, true)) return fail("pf-image-invalid");
-  const liveUrl = f.get("liveUrl");
+  const liveUrl = within(f.get("liveUrl"), MAX_LEN.url);
   if (liveUrl && !isLink(liveUrl)) return fail("pf-live-invalid");
 
   const published = f.get("published") === "on";
@@ -862,13 +884,13 @@ async function savePortfolio(c: Ctx, id: string | null) {
   const d = {
     title,
     slug,
-    client: f.get("client"),
+    client: within(f.get("client"), MAX_LEN.client),
     category: portfolioCategory(f.get("category")),
     year,
-    summary: f.get("summary"),
-    content: f.get("content"),
-    tags: f.get("tags"),
-    coverColor: /^#[0-9a-f]{6}$/i.test(f.get("coverColor")) ? f.get("coverColor") : DEFAULT_COVER,
+    summary: within(f.get("summary"), MAX_LEN.pfSummary),
+    content: within(f.get("content"), MAX_LEN.pfContent),
+    tags: within(f.get("tags"), MAX_LEN.pfTags),
+    coverColor: coverColorOr(f.get("coverColor")),
     imageUrl: imageUrl || null,
     liveUrl: liveUrl || null,
     featured,
@@ -967,17 +989,22 @@ on("GET", "/api/team", async (c) => {
         assignedOpenTasks: open.filter((t) => t.assigneeId === u.id).length,
       };
     }),
-    discord: isAdmin(me) ? await settings.discord() : null,
+    // hanya nilai tersimpan: webhook cadangan dari env tidak pernah dikirim ke form (lihat settings.discordForm)
+    discord: isAdmin(me) ? await settings.discordForm() : null,
     unassigned: live.filter((t) => !t.assigneeId).length,
     adminCount: allUsers.filter(isAdmin).length,
   } satisfies TeamResponse);
 });
 
-/** Discord ID dari input ("<@!123…>" atau angka) → angka, "" bila kosong, null bila tidak valid */
+/** Discord ID dari input ("<@!123…>" atau angka) → angka, "" bila kosong, null bila tidak valid.
+ * 17–20 digit, sama dengan teks bantuan ("17–20 digit") dan pattern di form Tim. */
 function discordIdOf(v: string) {
   const id = v.replace(/[<@!>]/g, "");
-  return !id || /^\d{15,21}$/.test(id) ? id : null;
+  return !id || /^\d{17,20}$/.test(id) ? id : null;
 }
+/** Password baru: minimal MIN_PASSWORD, maksimal MAX_LEN.password (null = valid) */
+const passwordProblem = (pw: string, short: ErrCode): ErrCode | null =>
+  pw.length < MIN_PASSWORD ? short : pw.length > MAX_LEN.password ? "too-long" : null;
 
 on("POST", "/api/users", async (c) => {
   needAdmin(c);
@@ -987,8 +1014,10 @@ on("POST", "/api/users", async (c) => {
   const email = normEmail(f.get("email"));
   const password = f.get("password");
   if (!name) return done(c, { err: "user-name-required", to });
+  if (name.length > MAX_LEN.userName || email.length > MAX_LEN.email) return done(c, { err: "too-long", to });
   if (!isEmail(email)) return done(c, { err: "user-email-invalid", to });
-  if (password.length < MIN_PASSWORD) return done(c, { err: "user-password-short", to });
+  const pwErr = passwordProblem(password, "user-password-short");
+  if (pwErr) return done(c, { err: pwErr, to });
   const discordId = discordIdOf(f.get("discordId"));
   if (discordId == null) return done(c, { err: "discord-id-invalid", to });
   if (await users.byEmail(email)) return done(c, { err: "email-taken", to });
@@ -1025,7 +1054,8 @@ on("POST", "/api/users/:id/password", async (c) => {
   const target = found(await users.get(c.params.id!), "user-not-found");
   if (target.id === me.id) return done(c, { err: "user-reset-self", to });
   const password = f.get("password");
-  if (password.length < MIN_PASSWORD) return done(c, { err: "password-short", to });
+  const pwErr = passwordProblem(password, "password-short");
+  if (pwErr) return done(c, { err: pwErr, to });
   await users.resetPassword(target.id, await hashPassword(password));
   return done(c, { ok: "user-password-reset", to });
 });
@@ -1062,10 +1092,24 @@ on("POST", "/api/account/password", async (c) => {
   const f = await c.body();
   const to = backPath(c, f, PAGES.team);
   const hash = await users.passwordHash(me.id);
-  if (!hash || !(await verifyPassword(f.get("current"), hash))) return done(c, { err: "password-wrong", to });
-  if (f.get("next").length < MIN_PASSWORD) return done(c, { err: "password-short", to });
-  await users.setPassword(me.id, await hashPassword(f.get("next")));
+  const current = f.get("current");
+  if (!hash || current.length > MAX_LOGIN_PASSWORD || !(await verifyPassword(current, hash))) {
+    return done(c, { err: "password-wrong", to });
+  }
+  const pwErr = passwordProblem(f.get("next"), "password-short");
+  if (pwErr) return done(c, { err: pwErr, to });
+  // sesi lain akun ini (perangkat lain, mis. yang mungkin dipakai orang lain) berakhir; perangkat ini tetap masuk
+  await users.changePassword(me.id, await hashPassword(f.get("next")), sessionId(c.req));
   return done(c, { ok: "password-changed", to });
+});
+
+/** "Keluar dari semua perangkat lain": hapus semua sesi akun ini kecuali sesi request ini */
+on("POST", "/api/account/logout-others", async (c) => {
+  const me = needUser(c);
+  const f = await c.body();
+  const keep = sessionId(c.req);
+  if (keep) await sessions.removeOthers(me.id, keep);
+  return done(c, { ok: "sessions-ended", to: backPath(c, f, PAGES.team) });
 });
 
 /* ---------- Discord ---------- */
@@ -1107,8 +1151,14 @@ function match(pattern: string, path: string) {
   if (a.length !== b.length) return null;
   const params: Record<string, string> = {};
   for (let i = 0; i < a.length; i++) {
-    if (a[i]!.startsWith(":")) params[a[i]!.slice(1)] = decodeURIComponent(b[i]!);
-    else if (a[i] !== b[i]) return null;
+    if (a[i]!.startsWith(":")) {
+      // escape % yang rusak (mis. /api/projects/%E0%A4%A) = tidak cocok → 404, bukan 500
+      try {
+        params[a[i]!.slice(1)] = decodeURIComponent(b[i]!);
+      } catch {
+        return null;
+      }
+    } else if (a[i] !== b[i]) return null;
   }
   return params;
 }

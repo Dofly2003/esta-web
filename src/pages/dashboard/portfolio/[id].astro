@@ -10,7 +10,7 @@ import Badge from "../../../components/dash/Badge.astro";
 import Icon from "../../../components/dash/Icon.astro";
 import { coverBg, errIn, externalAttrs, invalid } from "../../../components/dash/ui";
 import { apiOrNull, withFlash } from "../../../lib/api";
-import { DEFAULT_COVER, isAdmin, MAX_FEATURED, PORTFOLIO_CATEGORIES } from "@shared/constants";
+import { DEFAULT_COVER, isAdmin, MAX_FEATURED, MAX_LEN, PORTFOLIO_CATEGORIES } from "@shared/constants";
 import { ERR, type ErrCode } from "@shared/messages";
 import { currentYear, slugify } from "@shared/format";
 import type { PortfolioEditResponse } from "@shared/types";
@@ -101,10 +101,10 @@ const noCode = { spellcheck: "false", autocapitalize: "none", autocomplete: "off
       <Panel id="h-info" title="Informasi karya">
         <div class="panel-body form-grid">
           <Field id="f-title" label="Judul" required class="full" error={titleErr}>
-            <input id="f-title" name="title" required value={item?.title} class="input" autocomplete="off" data-pv="title" {...invalid("f-title", titleErr)} />
+            <input id="f-title" name="title" required maxlength={MAX_LEN.pfTitle} value={item?.title} class="input" autocomplete="off" data-pv="title" {...invalid("f-title", titleErr)} />
           </Field>
           <Field id="f-client" label="Klien">
-            <input id="f-client" name="client" value={item?.client} class="input" autocomplete="off" />
+            <input id="f-client" name="client" maxlength={MAX_LEN.client} value={item?.client} class="input" autocomplete="off" />
           </Field>
           <Field id="f-slug" label="Slug URL" hint="(kosongkan = otomatis)" error={slugErr}>
             <input
@@ -151,13 +151,13 @@ const noCode = { spellcheck: "false", autocapitalize: "none", autocomplete: "off
       <Panel id="h-story" title="Cerita">
         <div class="panel-body form-grid">
           <Field id="f-summary" label="Ringkasan" hint="(1–2 kalimat)" class="full">
-            <textarea id="f-summary" name="summary" rows="2" class="input">{item?.summary}</textarea>
+            <textarea id="f-summary" name="summary" rows="2" maxlength={MAX_LEN.pfSummary} class="input">{item?.summary}</textarea>
           </Field>
           <Field id="f-content" label="Cerita proyek" hint="(pisahkan paragraf dengan baris kosong)" class="full">
-            <textarea id="f-content" name="content" rows="9" class="input" placeholder="Tantangan, solusi, hasil…">{item?.content}</textarea>
+            <textarea id="f-content" name="content" rows="9" maxlength={MAX_LEN.pfContent} class="input" placeholder="Tantangan, solusi, hasil…">{item?.content}</textarea>
           </Field>
           <Field id="f-tags" label="Teknologi / tag" hint="(pisah koma)" class="full">
-            <input id="f-tags" name="tags" value={item?.tags} class="input" placeholder="mis. Astro, Figma, SEO" autocomplete="off" />
+            <input id="f-tags" name="tags" maxlength={MAX_LEN.pfTags} value={item?.tags} class="input" placeholder="mis. Astro, Figma, SEO" autocomplete="off" />
           </Field>
         </div>
       </Panel>
@@ -169,6 +169,7 @@ const noCode = { spellcheck: "false", autocapitalize: "none", autocomplete: "off
               id="f-image"
               name="imageUrl"
               type="url"
+              maxlength={MAX_LEN.url}
               value={item?.imageUrl ?? ""}
               class="input"
               placeholder="https://… .jpg / .png / .webp"
@@ -199,6 +200,7 @@ const noCode = { spellcheck: "false", autocapitalize: "none", autocomplete: "off
               id="f-live"
               name="liveUrl"
               type="url"
+              maxlength={MAX_LEN.url}
               value={item?.liveUrl ?? ""}
               class="input"
               placeholder="https://"

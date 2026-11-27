@@ -14,7 +14,10 @@
     "check": "vp check",
     "lint": "vp lint",
     "fmt": "vp fmt",
-    "test": "vp test"
+    "test": "bun run test:server && bun run test:web",
+    "test:server": "bun --no-env-file scripts/test-server.ts",
+    "test:server:once": "bun test --no-env-file",
+    "test:web": "vp test run"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
@@ -24,8 +27,9 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
     "@types/bun": "latest",
+    "happy-dom": "^21.0.4",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.6.0",
-    "vite-plus": "1.7.0"
+    "vite-plus": "1.8.0"
   }
 }

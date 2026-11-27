@@ -1,6 +1,6 @@
 // Kirim notifikasi ke channel Discord lewat webhook.
 // Webhook diatur admin di Dashboard → Tim & Akun (disimpan di tabel settings),
-// atau lewat env DISCORD_WEBHOOK_URL sebagai cadangan.
+// atau lewat env DISCORD_WEBHOOK_URL sebagai cadangan selama setelan itu belum pernah disimpan di dashboard.
 import { settings } from "./repo";
 import type { Inquiry, Project, Task, User } from "../shared/types";
 import { labelOf, PRIORITY, PROJECT_STATUS, PROJECT_TYPES } from "../shared/constants";
@@ -8,8 +8,19 @@ import { cutText, fmtDate } from "../shared/format";
 
 const COLORS = { HIGH: 0xe11d48, MEDIUM: 0x6d5efc, LOW: 0x64748b, PROJECT: 0x22d3ee, TEST: 0x10b981, INQUIRY: 0x38bdf8 };
 
+/** Batas waktu kirim notifikasi yang ditunggu request (tugas, PJ proyek). Di serverless (Vercel) kiriman yang
+ * tidak ditunggu bisa hilang saat instance dibekukan, jadi semua notifikasi ditunggu dengan batas pendek. */
+export const NOTIFY_TIMEOUT_MS = 4000;
+/** Batas untuk notifikasi inquiry baru dari form Kontak publik (form tetap cepat) */
+export const INQUIRY_NOTIFY_CAP_MS = 2500;
+/** Pesan uji dari halaman Tim: admin menunggu hasilnya, jadi boleh lebih lama */
+const TEST_TIMEOUT_MS = 8000;
+
+/** Alamat website untuk link di pesan: SITE_URL, lalu domain produksi Vercel (env sistem Vercel), lalu localhost */
 function siteUrl() {
   if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/$/, "");
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+  if (vercel) return `https://${vercel.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
   return process.env.NODE_ENV === "production"
     ? `http://localhost:${process.env.PORT || 3000}`
     : "http://localhost:4321";
@@ -43,7 +54,13 @@ type Embed = {
   timestamp?: string;
 };
 
-async function send(content: string, embed: Embed, mentionIds: string[], webhookOverride?: string, timeoutMs = 8000) {
+async function send(
+  content: string,
+  embed: Embed,
+  mentionIds: string[],
+  webhookOverride?: string,
+  timeoutMs = NOTIFY_TIMEOUT_MS,
+) {
   const cfg = await settings.discord();
   const url = webhookOverride ?? cfg.webhookUrl;
   if (!url || (!webhookOverride && !cfg.enabled)) return { ok: false, reason: "off" as const };
@@ -63,13 +80,23 @@ async function send(content: string, embed: Embed, mentionIds: string[], webhook
   return { ok: true as const };
 }
 
-/** Tidak pernah melempar error: kegagalan Discord tidak boleh menggagalkan simpan data */
-async function safe(fn: () => Promise<unknown>) {
-  try {
-    await fn();
-  } catch (e) {
-    console.error("[discord] gagal kirim notifikasi:", e);
-  }
+/** Tidak pernah melempar error: kegagalan Discord tidak boleh menggagalkan simpan data.
+ * `capMs` = paling lama sekian ditunggu (termasuk membaca setelan); lewat itu pemanggil lanjut dan
+ * kiriman dicatat di log sebagai terlambat. */
+async function safe(fn: () => Promise<unknown>, capMs?: number) {
+  const work = fn().then(
+    () => true,
+    (e) => {
+      console.error("[discord] gagal kirim notifikasi:", e);
+      return true;
+    },
+  );
+  if (!capMs) return void (await work);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cap = new Promise<false>((resolve) => (timer = setTimeout(() => resolve(false), capMs)));
+  const finished = await Promise.race([work, cap]);
+  clearTimeout(timer);
+  if (!finished) console.error(`[discord] notifikasi melewati batas ${capMs} ms, tidak ditunggu lagi`);
 }
 
 export function notifyTaskAssigned(opts: {
@@ -152,9 +179,12 @@ export function notifyTasksAssigned(opts: {
   );
 }
 
-/** Inquiry baru dari form Kontak publik. Batas waktu pendek; pemanggil TIDAK menunggu (fire-and-forget),
- * jadi form publik tidak melambat dan kegagalan hanya dicatat di log. Mengikuti setelan aktif/webhook. */
-export function notifyInquiry(q: Pick<Inquiry, "id" | "name" | "email" | "company" | "service" | "budget" | "message">) {
+/** Inquiry baru dari form Kontak publik. Ditunggu paling lama `capMs` (default INQUIRY_NOTIFY_CAP_MS) agar form
+ * publik tetap cepat; kegagalan / keterlambatan hanya dicatat di log. Mengikuti setelan aktif/webhook. */
+export function notifyInquiry(
+  q: Pick<Inquiry, "id" | "name" | "email" | "company" | "service" | "budget" | "message">,
+  capMs = INQUIRY_NOTIFY_CAP_MS,
+) {
   const fields = [
     { name: "🏢 Bisnis", value: plain(q.company || "—", 100), inline: true },
     { name: "🧩 Layanan", value: plain(q.service || "—", 100), inline: true },
@@ -172,8 +202,9 @@ export function notifyInquiry(q: Pick<Inquiry, "id" | "name" | "email" | "compan
       },
       [],
       undefined,
-      4000,
+      capMs,
     ),
+    capMs,
   );
 }
 
@@ -189,5 +220,6 @@ export function sendTest(webhookUrl: string, by: User) {
     },
     mentions(by),
     webhookUrl,
+    TEST_TIMEOUT_MS,
   );
 }

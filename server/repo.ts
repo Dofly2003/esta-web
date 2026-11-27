@@ -1,8 +1,9 @@
 // Akses data (query SQL) — satu-satunya tempat yang menyentuh tabel.
 // Hapus berantai ditulis eksplisit (tidak bergantung pada PRAGMA foreign_keys) agar sama di file lokal & Turso.
 import type { Row } from "@libsql/client";
-import { batch, client, first, newId, now, ready, rows, run } from "./db";
-import type { DiscordSettings, Inquiry, PortfolioItem, Project, Task, User } from "../shared/types";
+import { batch, first, newId, now, rows, run, type Stmt } from "./db";
+import type { DiscordForm, DiscordSettings, Inquiry, PortfolioItem, Project, Task, User } from "../shared/types";
+import { coverColorOr } from "../shared/constants";
 
 /* ---------- mapper baris → objek ---------- */
 const s = (v: unknown) => (v == null ? "" : String(v));
@@ -53,7 +54,8 @@ const toPortfolio = (r: Row): PortfolioItem => ({
   summary: s(r.summary),
   content: s(r.content),
   tags: s(r.tags),
-  coverColor: s(r.cover_color),
+  // juga dibersihkan saat dibaca: nilai ini masuk ke atribut style
+  coverColor: coverColorOr(s(r.cover_color)),
   imageUrl: sn(r.image_url),
   liveUrl: sn(r.live_url),
   featured: !!n(r.featured),
@@ -93,6 +95,22 @@ const stamps = (d: Seed, at = now()) => ({
   createdAt: d.createdAt ?? at,
   updatedAt: d.updatedAt ?? at,
 });
+/** Pernyataan INSERT + id barisnya: dijalankan sendiri (create) atau sekaligus dalam satu transaksi (impor) */
+type Insert = Stmt & { id: string };
+const exec = async (ins: Insert) => {
+  await run(ins.sql, ins.args);
+  return ins.id;
+};
+
+type NewUser = {
+  id?: string;
+  name: string;
+  email: string;
+  role: string;
+  passwordHash: string;
+  discordId?: string;
+  createdAt?: string;
+};
 
 /* ---------- users ---------- */
 export const users = {
@@ -105,20 +123,13 @@ export const users = {
   async passwordHash(id: string) {
     return sn((await first("SELECT password_hash FROM users WHERE id = $id", { id }))?.password_hash);
   },
-  async create(d: {
-    id?: string;
-    name: string;
-    email: string;
-    role: string;
-    passwordHash: string;
-    discordId?: string;
-    createdAt?: string;
-  }) {
+  insert(d: NewUser): Insert {
     const id = d.id ?? newId();
-    await run(
-      `INSERT INTO users (id, name, email, password_hash, role, discord_id, created_at)
+    return {
+      id,
+      sql: `INSERT INTO users (id, name, email, password_hash, role, discord_id, created_at)
        VALUES ($id, $name, $email, $hash, $role, $discord, $at)`,
-      {
+      args: {
         id,
         name: d.name,
         email: d.email,
@@ -127,10 +138,15 @@ export const users = {
         discord: d.discordId ?? "",
         at: d.createdAt ?? now(),
       },
-    );
-    return id;
+    };
   },
-  setPassword: (id: string, hash: string) => run("UPDATE users SET password_hash = $hash WHERE id = $id", { id, hash }),
+  create: (d: NewUser) => exec(users.insert(d)),
+  /** Ganti password sendiri: semua sesi LAIN akun ini berakhir, sesi `keepSession` (perangkat ini) tetap (atomik) */
+  changePassword: (id: string, hash: string, keepSession: string | null) =>
+    batch([
+      { sql: "UPDATE users SET password_hash = $hash WHERE id = $id", args: { id, hash } },
+      { sql: "DELETE FROM sessions WHERE user_id = $id AND id IS NOT $keep", args: { id, keep: keepSession } },
+    ]),
   /** Password baru dari admin + keluarkan akun itu dari semua sesi (atomik) */
   resetPassword: (id: string, hash: string) =>
     batch([
@@ -162,6 +178,10 @@ export const sessions = {
       { id, now: now() },
     ),
   remove: (id: string) => run("DELETE FROM sessions WHERE id = $id", { id }),
+  /** Keluarkan akun dari semua perangkat lain (sesi `keep` tetap) */
+  removeOthers: (userId: string, keep: string) =>
+    run("DELETE FROM sessions WHERE user_id = $userId AND id <> $keep", { userId, keep }),
+  countFor: (userId: string) => count("SELECT COUNT(*) AS n FROM sessions WHERE user_id = $userId", { userId }),
   purgeExpired: () => run("DELETE FROM sessions WHERE expires_at <= $now", { now: now() }),
 };
 
@@ -183,15 +203,16 @@ export const projects = {
   // urutan tampilan ditentukan API (/api/projects?sort=); di sini nama saja agar stabil
   list: () => many("SELECT * FROM projects ORDER BY name COLLATE NOCASE", toProject),
   get: (id: string) => one("SELECT * FROM projects WHERE id = $id", toProject, { id }),
-  async create(d: ProjectInput & Seed) {
+  insert(d: ProjectInput & Seed): Insert {
     const st = stamps(d);
-    await run(
-      `INSERT INTO projects (id, name, client, type, status, description, budget, start_date, due_date, lead_id, created_at, updated_at)
+    return {
+      id: st.id,
+      sql: `INSERT INTO projects (id, name, client, type, status, description, budget, start_date, due_date, lead_id, created_at, updated_at)
        VALUES ($id, $name, $client, $type, $status, $description, $budget, $startDate, $dueDate, $leadId, $createdAt, $updatedAt)`,
-      { ...projectArgs(d), ...st },
-    );
-    return st.id;
+      args: { ...projectArgs(d), ...st },
+    };
   },
+  create: (d: ProjectInput & Seed) => exec(projects.insert(d)),
   setStatus: (id: string, status: string) =>
     run("UPDATE projects SET status = $status, updated_at = $at WHERE id = $id", { id, status, at: now() }),
   update: (id: string, d: ProjectInput) =>
@@ -227,15 +248,16 @@ export const tasks = {
   get: (id: string) => one("SELECT * FROM tasks WHERE id = $id", toTask, { id }),
   // projects.updated_at TIDAK disentuh: dipakai sebagai versi form edit proyek (cek bentrok antar-tab),
   // jadi menambah tugas tidak boleh membuat form edit proyek di tab lain dianggap usang.
-  async create(d: TaskInput & Seed) {
+  insert(d: TaskInput & Seed): Insert {
     const st = stamps(d);
-    await run(
-      `INSERT INTO tasks (id, title, description, status, priority, due_date, project_id, assignee_id, created_at, updated_at)
+    return {
+      id: st.id,
+      sql: `INSERT INTO tasks (id, title, description, status, priority, due_date, project_id, assignee_id, created_at, updated_at)
        VALUES ($id, $title, $description, $status, $priority, $dueDate, $projectId, $assigneeId, $createdAt, $updatedAt)`,
-      { ...taskArgs(d), ...st, projectId: d.projectId },
-    );
-    return st.id;
+      args: { ...taskArgs(d), ...st, projectId: d.projectId },
+    };
   },
+  create: (d: TaskInput & Seed) => exec(tasks.insert(d)),
   update: (id: string, d: Omit<TaskInput, "projectId">) =>
     run(
       `UPDATE tasks SET title=$title, description=$description, status=$status, priority=$priority, due_date=$dueDate,
@@ -259,7 +281,7 @@ const pfArgs = (d: PortfolioInput) => ({
   summary: d.summary,
   content: d.content,
   tags: d.tags,
-  coverColor: d.coverColor,
+  coverColor: coverColorOr(d.coverColor),
   imageUrl: d.imageUrl,
   liveUrl: d.liveUrl,
   featured: d.featured ? 1 : 0,
@@ -275,17 +297,18 @@ export const portfolio = {
   bySlug: (slug: string) => one("SELECT * FROM portfolio WHERE slug = $slug", toPortfolio, { slug }),
   byProject: (projectId: string) =>
     many("SELECT * FROM portfolio WHERE project_id = $projectId", toPortfolio, { projectId }),
-  async create(d: PortfolioInput & Seed) {
+  insert(d: PortfolioInput & Seed): Insert {
     const st = stamps(d);
-    await run(
-      `INSERT INTO portfolio (id, slug, title, client, category, year, summary, content, tags, cover_color, image_url, live_url,
+    return {
+      id: st.id,
+      sql: `INSERT INTO portfolio (id, slug, title, client, category, year, summary, content, tags, cover_color, image_url, live_url,
         featured, published, sort_order, project_id, created_at, updated_at)
        VALUES ($id, $slug, $title, $client, $category, $year, $summary, $content, $tags, $coverColor, $imageUrl, $liveUrl,
         $featured, $published, $sortOrder, $projectId, $createdAt, $updatedAt)`,
-      { ...pfArgs(d), ...st },
-    );
-    return st.id;
+      args: { ...pfArgs(d), ...st },
+    };
   },
+  create: (d: PortfolioInput & Seed) => exec(portfolio.insert(d)),
   update: (id: string, d: PortfolioInput) =>
     run(
       `UPDATE portfolio SET slug=$slug, title=$title, client=$client, category=$category, year=$year, summary=$summary,
@@ -306,15 +329,17 @@ export const portfolio = {
 };
 
 /* ---------- inquiry ---------- */
+type NewInquiry = Omit<Inquiry, "id" | "createdAt" | "status"> & { status?: string; id?: string; createdAt?: string };
 export const inquiries = {
   list: () => many("SELECT * FROM inquiries ORDER BY created_at DESC", toInquiry),
   get: (id: string) => one("SELECT * FROM inquiries WHERE id = $id", toInquiry, { id }),
-  async create(d: Omit<Inquiry, "id" | "createdAt" | "status"> & { status?: string; id?: string; createdAt?: string }) {
+  insert(d: NewInquiry): Insert {
     const id = d.id ?? newId();
-    await run(
-      `INSERT INTO inquiries (id, name, email, company, service, budget, message, status, created_at)
+    return {
+      id,
+      sql: `INSERT INTO inquiries (id, name, email, company, service, budget, message, status, created_at)
        VALUES ($id, $name, $email, $company, $service, $budget, $message, $status, $createdAt)`,
-      {
+      args: {
         id,
         name: d.name,
         email: d.email,
@@ -325,9 +350,9 @@ export const inquiries = {
         status: d.status ?? "NEW",
         createdAt: d.createdAt ?? now(),
       },
-    );
-    return id;
+    };
   },
+  create: (d: NewInquiry) => exec(inquiries.insert(d)),
   setStatus: (id: string, status: string) =>
     run("UPDATE inquiries SET status = $status WHERE id = $id", { id, status }),
   remove: (id: string) => run("DELETE FROM inquiries WHERE id = $id", { id }),
@@ -335,29 +360,49 @@ export const inquiries = {
 };
 
 /* ---------- pengaturan ---------- */
-async function getSetting<T extends object>(key: string, fallback: T): Promise<T> {
+/** Nilai tersimpan (digabung dengan fallback), atau null bila kunci belum pernah disimpan.
+ * JSON rusak dianggap fallback (tidak membuat setiap request Discord gagal). */
+async function getSetting<T extends object>(key: string, fallback: T): Promise<T | null> {
   const r = await first("SELECT value FROM settings WHERE key = $key", { key });
-  return r ? { ...fallback, ...JSON.parse(s(r.value)) } : fallback;
+  if (!r) return null;
+  try {
+    return { ...fallback, ...(JSON.parse(s(r.value)) as Partial<T>) };
+  } catch {
+    return fallback;
+  }
 }
-const setSetting = (key: string, value: unknown) =>
-  run("INSERT INTO settings (key, value) VALUES ($key, $value) ON CONFLICT(key) DO UPDATE SET value = excluded.value", {
-    key,
-    value: JSON.stringify(value),
-  });
+const settingStmt = (key: string, value: unknown): Stmt => ({
+  sql: "INSERT INTO settings (key, value) VALUES ($key, $value) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  args: { key, value: JSON.stringify(value) },
+});
 
+const DISCORD_DEFAULT: DiscordSettings = { webhookUrl: "", enabled: true };
 export const settings = {
+  /** Setelan untuk mengirim. Env DISCORD_WEBHOOK_URL hanya cadangan selama admin BELUM pernah menyimpan
+   * setelan di dashboard; setelah webhook dikosongkan di sana, notifikasi benar-benar mati. */
   async discord(): Promise<DiscordSettings> {
-    const v = await getSetting<DiscordSettings>("discord", { webhookUrl: "", enabled: true });
-    return { ...v, webhookUrl: v.webhookUrl || process.env.DISCORD_WEBHOOK_URL || "" };
+    const saved = await getSetting("discord", DISCORD_DEFAULT);
+    return saved ?? { ...DISCORD_DEFAULT, webhookUrl: process.env.DISCORD_WEBHOOK_URL || "" };
   },
-  setDiscord: (v: DiscordSettings) => setSetting("discord", v),
+  /** Untuk form admin: hanya nilai tersimpan (rahasia env tidak pernah diisikan ke form, jadi tidak ikut tersalin
+   * ke database saat Simpan) + fromEnv = saat ini notifikasi memakai webhook cadangan dari env */
+  async discordForm(): Promise<DiscordForm> {
+    const saved = await getSetting("discord", DISCORD_DEFAULT);
+    return { ...(saved ?? DISCORD_DEFAULT), fromEnv: !saved && !!process.env.DISCORD_WEBHOOK_URL };
+  },
+  discordStmt: (v: DiscordSettings) => settingStmt("discord", { webhookUrl: v.webhookUrl, enabled: v.enabled }),
+  setDiscord: (v: DiscordSettings) => {
+    const st = settings.discordStmt(v);
+    return run(st.sql, st.args);
+  },
 };
 
 /* ---------- seed / impor ---------- */
+/** Pernyataan untuk mengosongkan semua tabel data (urutan: anak dulu) */
+export const WIPE_STMTS: Stmt[] = ["tasks", "portfolio", "projects", "inquiries", "sessions", "users", "settings"].map(
+  (t) => ({ sql: `DELETE FROM ${t}` }),
+);
 /** Kosongkan semua tabel data (dipakai `db:seed --force` dan `db:import --force`) */
 export async function wipeAll() {
-  await ready;
-  await client.executeMultiple(
-    "DELETE FROM tasks; DELETE FROM portfolio; DELETE FROM projects; DELETE FROM inquiries; DELETE FROM sessions; DELETE FROM users; DELETE FROM settings;",
-  );
+  await batch(WIPE_STMTS);
 }

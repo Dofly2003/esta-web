@@ -93,6 +93,27 @@ export const PORTFOLIO_CATEGORIES = ["Website", "Web App", "Mobile App", "UI/UX"
 export const portfolioCategory = (v: string) => (PORTFOLIO_CATEGORIES.includes(v) ? v : "Website");
 /** Warna sampul karya bawaan (sama dengan default kolom cover_color di database) */
 export const DEFAULT_COVER = "#6d5efc";
+/** Warna "#rrggbb" (satu-satunya bentuk yang boleh masuk ke atribut style sampul) */
+export const isHexColor = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
+/** Warna sampul yang sah, selain itu fallback (default DEFAULT_COVER) */
+export const coverColorOr = (v: unknown, fallback = DEFAULT_COVER) => (isHexColor(v) ? v : fallback);
+
+/** Panjang maksimum isian teks (dicek di server; nilai di atasnya ditolak dengan err=too-long).
+ * Atribut maxlength di form memakai angka yang sama bila ada. */
+export const MAX_LEN = {
+  userName: 120,
+  email: 200,
+  password: 256,
+  projectName: 160,
+  client: 160,
+  description: 10_000,
+  taskTitle: 300,
+  pfTitle: 160,
+  pfSummary: 500,
+  pfContent: 50_000,
+  pfTags: 300,
+  url: 2000,
+} as const;
 
 type Service = { title: string; group: "website" | "software" };
 

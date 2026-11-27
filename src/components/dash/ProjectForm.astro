@@ -8,7 +8,7 @@
 import Field from "./Field.astro";
 import Options from "./Options.astro";
 import { invalid } from "./ui";
-import { PROJECT_STATUS, PROJECT_TYPES } from "@shared/constants";
+import { MAX_LEN, PROJECT_STATUS, PROJECT_TYPES } from "@shared/constants";
 import { ERR, type ErrCode } from "@shared/messages";
 import { today } from "@shared/format";
 import type { Project, User } from "@shared/types";
@@ -69,6 +69,7 @@ const dueErr = errFor("project-dates", "date-invalid");
       id={id("name")}
       name="name"
       required
+      maxlength={MAX_LEN.projectName}
       value={v.name}
       class="input"
       autocomplete="off"
@@ -81,6 +82,7 @@ const dueErr = errFor("project-dates", "date-invalid");
       id={id("client")}
       name="client"
       required
+      maxlength={MAX_LEN.client}
       value={v.client}
       class="input"
       autocomplete="off"
@@ -137,7 +139,7 @@ const dueErr = errFor("project-dates", "date-invalid");
     />
   </Field>
   <Field id={id("desc")} label="Deskripsi / scope" hint="(opsional)" class="full">
-    <textarea id={id("desc")} name="description" rows={prefill?.description ? 6 : 3} class="input">{v.description}</textarea>
+    <textarea id={id("desc")} name="description" maxlength={MAX_LEN.description} rows={prefill?.description ? 6 : 3} class="input">{v.description}</textarea>
   </Field>
   <div class="full">
     <button type="submit" class={primary ? "btn-primary" : "btn"}>{submitLabel}</button>

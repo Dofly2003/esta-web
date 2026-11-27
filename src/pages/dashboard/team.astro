@@ -12,7 +12,7 @@ import DeleteForm from "../../components/dash/DeleteForm.astro";
 import SectionHead from "../../components/dash/SectionHead.astro";
 import { errIn, invalid } from "../../components/dash/ui";
 import { api } from "../../lib/api";
-import { BRAND, MIN_PASSWORD, ROLES, isAdmin } from "@shared/constants";
+import { BRAND, MAX_LEN, MIN_PASSWORD, ROLES, isAdmin } from "@shared/constants";
 import { ERR } from "@shared/messages";
 import type { TeamResponse } from "@shared/types";
 
@@ -52,7 +52,9 @@ const inviteText = invited
 const dcState = discord
   ? discord.enabled && discord.webhookUrl
     ? { tone: "ok" as const, text: "Aktif: notifikasi dikirim ke channel webhook ini." }
-    : discord.enabled
+    : discord.fromEnv
+      ? { tone: "ok" as const, text: "Aktif: memakai webhook cadangan dari pengaturan server. Simpan link di sini untuk menggantinya." }
+      : discord.enabled
       ? { tone: "warn" as const, text: "Mati: link webhook belum diisi." }
       : { tone: "neutral" as const, text: "Mati: “Kirim notifikasi otomatis” tidak dicentang." }
   : null;
@@ -351,7 +353,7 @@ const dcState = discord
             <form method="post" action="/api/users" class="panel-body" data-keep="add-user" data-guard>
               <input type="hidden" name="_back" value="/dashboard/team?form=tambah#h-add" />
               <Field id="new-name" label="Nama" required error={nameErr}>
-                <input id="new-name" name="name" required maxlength="120" class="input" autocomplete="off" {...invalid("new-name", nameErr)} />
+                <input id="new-name" name="name" required maxlength={MAX_LEN.userName} class="input" autocomplete="off" {...invalid("new-name", nameErr)} />
               </Field>
               <Field id="new-email" label="Email" required error={emailErr}>
                 <input

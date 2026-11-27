@@ -6,9 +6,10 @@
 // akun lain mendapat password sementara yang ditulis ke data/initial-passwords.txt.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { hashPassword } from "../server/auth";
-import { inquiries, portfolio, projects, settings, tasks, users, wipeAll } from "../server/repo";
-import { DEFAULT_COVER } from "../shared/constants";
-import { currentYear } from "../shared/format";
+import { batch, type Stmt } from "../server/db";
+import { inquiries, portfolio, projects, settings, tasks, users, WIPE_STMTS } from "../server/repo";
+import { coverColorOr } from "../shared/constants";
+import { currentYear, isLink } from "../shared/format";
 import { openForWrite } from "./_db";
 
 const file = "data/firestore-export.json";
@@ -22,12 +23,17 @@ type Doc = Record<string, any>;
 const data = JSON.parse(readFileSync(file, "utf8")) as Record<string, Doc[]>;
 const day = (v: unknown) => (typeof v === "string" && v ? v.slice(0, 10) : null);
 const iso = (v: unknown) => (typeof v === "string" && v ? v : new Date().toISOString());
+/** Link dari data lama: hanya http(s) (gambar boleh path lokal "/…"); selain itu dibuang */
+const link = (v: unknown, relative = false) => (typeof v === "string" && isLink(v, relative) ? v : null);
+/** Bilangan bulat dari data lama, selain itu fallback */
+const int = (v: unknown, fallback: number) => (Number.isInteger(v) ? (v as number) : fallback);
 
 const temp = () => Buffer.from(crypto.getRandomValues(new Uint8Array(9))).toString("base64url");
 const lines: string[] = [];
 const adminPassword = process.env.SEED_PASSWORD;
 
-// Hash dulu (async), baru tulis semua dalam satu transaksi
+// Hash dulu (async), lalu kumpulkan semua perintah tulis dan jalankan dalam SATU transaksi (batch):
+// impor yang gagal di tengah jalan tidak meninggalkan database setengah terisi / setengah terhapus.
 const people = await Promise.all(
   (data.users ?? []).map(async (u) => {
     const isAdminSeed = u.email === "admin@esta.id" && adminPassword;
@@ -37,97 +43,109 @@ const people = await Promise.all(
   }),
 );
 
+const stmts: Stmt[] = force ? [...WIPE_STMTS] : [];
 {
-  if (force) await wipeAll();
-
   for (const { u, hash } of people) {
-    await users.create({
-      id: u.id,
-      name: u.name,
-      email: String(u.email).toLowerCase(),
-      role: u.role ?? "MEMBER",
-      passwordHash: hash,
-      discordId: u.discordId ?? "",
-      createdAt: iso(u.createdAt),
-    });
+    stmts.push(
+      users.insert({
+        id: u.id,
+        name: u.name,
+        email: String(u.email).toLowerCase(),
+        role: u.role ?? "MEMBER",
+        passwordHash: hash,
+        discordId: u.discordId ?? "",
+        createdAt: iso(u.createdAt),
+      }),
+    );
   }
   const userIds = new Set(people.map((p) => p.u.id));
   const ref = (id: unknown) => (typeof id === "string" && userIds.has(id) ? id : null);
 
   for (const p of data.projects ?? []) {
-    await projects.create({
-      id: p.id,
-      name: p.name,
-      client: p.client ?? "",
-      type: p.type ?? "WEBSITE",
-      status: p.status ?? "PLANNING",
-      description: p.description ?? "",
-      budget: p.budget ?? null,
-      startDate: day(p.startDate),
-      dueDate: day(p.dueDate),
-      leadId: ref(p.leadId),
-      createdAt: iso(p.createdAt),
-      updatedAt: iso(p.updatedAt),
-    });
+    stmts.push(
+      projects.insert({
+        id: p.id,
+        name: p.name,
+        client: p.client ?? "",
+        type: p.type ?? "WEBSITE",
+        status: p.status ?? "PLANNING",
+        description: p.description ?? "",
+        budget: p.budget ?? null,
+        startDate: day(p.startDate),
+        dueDate: day(p.dueDate),
+        leadId: ref(p.leadId),
+        createdAt: iso(p.createdAt),
+        updatedAt: iso(p.updatedAt),
+      }),
+    );
   }
   const projectIds = new Set((data.projects ?? []).map((p) => p.id));
 
   for (const t of data.tasks ?? []) {
     if (!projectIds.has(t.projectId)) continue;
-    await tasks.create({
-      id: t.id,
-      title: t.title,
-      description: t.description ?? "",
-      status: t.status ?? "TODO",
-      priority: t.priority ?? "MEDIUM",
-      dueDate: day(t.dueDate),
-      projectId: t.projectId,
-      assigneeId: ref(t.assigneeId),
-      createdAt: iso(t.createdAt),
-      updatedAt: iso(t.updatedAt),
-    });
+    stmts.push(
+      tasks.insert({
+        id: t.id,
+        title: t.title,
+        description: t.description ?? "",
+        status: t.status ?? "TODO",
+        priority: t.priority ?? "MEDIUM",
+        dueDate: day(t.dueDate),
+        projectId: t.projectId,
+        assigneeId: ref(t.assigneeId),
+        createdAt: iso(t.createdAt),
+        updatedAt: iso(t.updatedAt),
+      }),
+    );
   }
 
   for (const p of data.portfolio ?? []) {
-    await portfolio.create({
-      id: p.id,
-      slug: p.slug,
-      title: p.title,
-      client: p.client ?? "",
-      category: p.category ?? "Website",
-      year: p.year ?? currentYear(),
-      summary: p.summary ?? "",
-      content: p.content ?? "",
-      tags: p.tags ?? "",
-      coverColor: p.coverColor ?? DEFAULT_COVER,
-      imageUrl: p.imageUrl ?? null,
-      liveUrl: p.liveUrl ?? null,
-      featured: !!p.featured,
-      published: !!p.published,
-      sortOrder: p.sortOrder ?? 0,
-      projectId: projectIds.has(p.projectId) ? p.projectId : null,
-      createdAt: iso(p.createdAt),
-      updatedAt: iso(p.updatedAt),
-    });
+    stmts.push(
+      portfolio.insert({
+        id: p.id,
+        slug: p.slug,
+        title: p.title,
+        client: p.client ?? "",
+        category: p.category ?? "Website",
+        year: int(p.year, currentYear()),
+        summary: p.summary ?? "",
+        content: p.content ?? "",
+        tags: p.tags ?? "",
+        // nilai ini masuk ke atribut style sampul: hanya "#rrggbb"
+        coverColor: coverColorOr(p.coverColor),
+        imageUrl: link(p.imageUrl, true),
+        liveUrl: link(p.liveUrl),
+        featured: !!p.featured,
+        published: !!p.published,
+        sortOrder: int(p.sortOrder, 0),
+        projectId: projectIds.has(p.projectId) ? p.projectId : null,
+        createdAt: iso(p.createdAt),
+        updatedAt: iso(p.updatedAt),
+      }),
+    );
   }
 
   for (const q of data.inquiries ?? []) {
-    await inquiries.create({
-      id: q.id,
-      name: q.name,
-      email: q.email,
-      company: q.company ?? "",
-      service: q.service ?? "",
-      budget: q.budget ?? "",
-      message: q.message ?? "",
-      status: q.status ?? "NEW",
-      createdAt: iso(q.createdAt),
-    });
+    stmts.push(
+      inquiries.insert({
+        id: q.id,
+        name: q.name,
+        email: q.email,
+        company: q.company ?? "",
+        service: q.service ?? "",
+        budget: q.budget ?? "",
+        message: q.message ?? "",
+        status: q.status ?? "NEW",
+        createdAt: iso(q.createdAt),
+      }),
+    );
   }
 
   const discord = (data.settings ?? []).find((s) => s.id === "discord");
-  if (discord) await settings.setDiscord({ webhookUrl: discord.webhookUrl ?? "", enabled: discord.enabled ?? true });
+  if (discord)
+    stmts.push(settings.discordStmt({ webhookUrl: discord.webhookUrl ?? "", enabled: discord.enabled ?? true }));
 }
+await batch(stmts);
 
 if (lines.length) {
   writeFileSync(

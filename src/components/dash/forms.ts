@@ -77,6 +77,15 @@ type Snapshot = { path: string; key: string; at?: number; values: [string, Value
 type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
 const $$ = <T extends Element>(sel: string, root: ParentNode = document) => Array.from(root.querySelectorAll<T>(sel));
+/** id dari location.hash ("" bila kosong; escape % rusak tidak membuat seluruh skrip berhenti) */
+function hashId() {
+  const raw = location.hash.slice(1);
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
 const fields = (form: HTMLFormElement) =>
   Array.from(form.elements).filter(
     (el): el is Control =>
@@ -305,7 +314,7 @@ function restore(err: string | null, ok: string | null) {
     if (form && (form.dataset.keepOk ?? "").split(" ").includes(ok)) apply(form, snap, (form.dataset.keepFields ?? "").split(" "));
   }
   if (!err) return null;
-  const hashEl = location.hash ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
+  const hashEl = location.hash ? document.getElementById(hashId()) : null;
   let form: HTMLFormElement | null = null;
   if (snap && snap.path === location.pathname) form = formByKey(snap.key);
   if (!form && hashEl) form = hashEl instanceof HTMLFormElement ? hashEl : hashEl.querySelector("form[data-keep]");
@@ -525,7 +534,7 @@ function flash() {
 
 /* ---------------- baris tujuan & tautan ke <details> ---------------- */
 function anchors(restored: HTMLFormElement | null, ok: string | null, err: string | null) {
-  const hash = location.hash ? decodeURIComponent(location.hash.slice(1)) : "";
+  const hash = hashId();
   const target = hash ? document.getElementById(hash) : null;
   if (target) {
     reveal(target);

@@ -1,7 +1,7 @@
 // Koneksi database lewat libSQL:
 // - Lokal  : file SQLite (DATABASE_PATH, default data/esta.sqlite)
 // - Online : Turso (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN) — SQLite di cloud
-import { createClient, type InArgs, type Row } from "@libsql/client";
+import { createClient, type Client, type InArgs, type Row } from "@libsql/client";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
@@ -98,23 +98,57 @@ const migrations: string[] = [
   );`,
 ];
 
-async function migrate() {
-  if (!isRemote) await client.executeMultiple("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
-  await client.execute(
-    "CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)",
-  );
-  const done = (await client.execute("SELECT COALESCE(MAX(version), 0) AS v FROM _migrations")).rows[0]!.v as number;
-  for (let v = done; v < migrations.length; v++) {
-    await client.executeMultiple(migrations[v]!);
-    await client.execute({ sql: "INSERT INTO _migrations (version, applied_at) VALUES (?, ?)", args: [v + 1, now()] });
+const appliedVersion = async (c: Pick<Client, "execute">) =>
+  Number((await c.execute("SELECT COALESCE(MAX(version), 0) AS v FROM _migrations")).rows[0]!.v);
+
+/**
+ * Terapkan migrasi yang belum ada. Aman bila beberapa instance cold start bersamaan (Vercel + Turso, atau dua
+ * proses pada file yang sama): tiap versi dijalankan di dalam transaksi tulis, versinya dicek ulang di dalam
+ * transaksi, dan pencatatan memakai INSERT OR IGNORE. Pernyataan migrasi sebaiknya tetap idempoten
+ * (CREATE … IF NOT EXISTS).
+ */
+export async function migrate(c: Client = client, local = !isRemote) {
+  // busy_timeout dulu: proses lain yang sedang menulis ditunggu, bukan langsung SQLITE_BUSY.
+  // Klien file libSQL membuka koneksi BARU setelah transaksi, jadi busy_timeout dipasang lagi sesudahnya.
+  const busyTimeout = () => (local ? c.execute("PRAGMA busy_timeout = 5000") : null);
+  await busyTimeout();
+  if (local) await c.execute("PRAGMA journal_mode = WAL");
+  await c.execute("CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)");
+  while ((await appliedVersion(c)) < migrations.length) {
+    const tx = await c.transaction("write");
+    try {
+      const v = await appliedVersion(tx);
+      if (v < migrations.length) {
+        await tx.executeMultiple(migrations[v]!);
+        await tx.execute({
+          sql: "INSERT OR IGNORE INTO _migrations (version, applied_at) VALUES (?, ?)",
+          args: [v + 1, now()],
+        });
+      }
+      await tx.commit();
+    } finally {
+      tx.close();
+      await busyTimeout();
+    }
   }
 }
 
-/** Selesai saat skema siap. Semua query menunggu ini. */
-export const ready = migrate();
+/** fn dijalankan sekali; bila gagal (mis. jaringan putus saat cold start), panggilan berikutnya mencoba lagi
+ * (tidak tersangkut di promise yang ditolak selamanya) */
+export function retryingOnce<T>(fn: () => Promise<T>) {
+  let pending: Promise<T> | null = null;
+  return () =>
+    (pending ??= fn().catch((e) => {
+      pending = null;
+      throw e;
+    }));
+}
+
+/** Selesai saat skema siap. Semua query menunggu ini; bila migrasi gagal, query berikutnya mencoba lagi. */
+export const ready = retryingOnce(() => migrate());
 
 export async function rows(sql: string, args: InArgs = {}): Promise<Row[]> {
-  await ready;
+  await ready();
   return (await client.execute({ sql, args })).rows;
 }
 
@@ -123,13 +157,16 @@ export async function first(sql: string, args: InArgs = {}): Promise<Row | null>
 }
 
 export async function run(sql: string, args: InArgs = {}) {
-  await ready;
+  await ready();
   await client.execute({ sql, args });
 }
 
+/** Satu perintah SQL dengan argumen (untuk batch) */
+export type Stmt = { sql: string; args?: InArgs };
+
 /** Beberapa perintah tulis sekaligus secara atomik */
-export async function batch(stmts: { sql: string; args?: InArgs }[]) {
-  await ready;
+export async function batch(stmts: Stmt[]) {
+  await ready();
   await client.batch(
     stmts.map((s) => ({ sql: s.sql, args: s.args ?? {} })),
     "write",
