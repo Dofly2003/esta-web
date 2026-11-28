@@ -25,7 +25,7 @@ describe("ui.ts", () => {
   it("invalid() / confirmAttr() / coverBg() / withLoad()", () => {
     expect(ui.invalid("f-name", "Wajib")).toEqual({ "aria-invalid": "true", "aria-describedby": "f-name-err" });
     expect(ui.invalid("f-name", null)).toEqual({});
-    expect(ui.confirmAttr('Hapus "X"?').onclick).toBe('return confirm("Hapus \\"X\\"?")');
+    expect(ui.confirmAttr('Hapus "X"?')).toEqual({ "data-confirm": 'Hapus "X"?' });
     expect(ui.coverBg("#123456")).toBe("linear-gradient(140deg, #123456 0%, var(--cover-ink) 115%)");
     expect(
       ui.withLoad(

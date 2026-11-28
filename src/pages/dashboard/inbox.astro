@@ -8,31 +8,43 @@ import EmptyState from "../../components/dash/EmptyState.astro";
 import StatusSelect from "../../components/dash/StatusSelect.astro";
 import DeleteForm from "../../components/dash/DeleteForm.astro";
 import { here } from "../../components/dash/ui";
-import { api } from "../../lib/api";
+import { api, apiPath } from "../../lib/api";
 import { BRAND, INQUIRY_STATUS, INQUIRY_STATUS_ALL, INQUIRY_STATUS_LEGACY, isAdmin, labelOf, REPLY_WITHIN_HOURS } from "@shared/constants";
 import { agoText, cutText, fmtDate, hoursSince } from "@shared/format";
-import type { Inquiry } from "@shared/types";
+import { inquiriesQuery, readQuery } from "@shared/schemas/query";
+import type { InquiriesResponse, Inquiry } from "@shared/types";
 
 const admin = isAdmin(Astro.locals.user!);
-const status = Object.hasOwn(INQUIRY_STATUS_ALL, Astro.url.searchParams.get("status") ?? "") ? Astro.url.searchParams.get("status")! : "";
-// semua inquiry diambil sekali: hitungan tampil di setiap segmen, daftar difilter di halaman
-const all = await api<Inquiry[]>(Astro, "/api/inquiries");
-const filtered = status ? all.filter((q) => q.status === status) : all;
-// triase "Baru": yang paling lama menunggu di atas
-const items = status === "NEW" ? [...filtered].reverse() : filtered;
+const sp = Astro.url.searchParams;
+const query = readQuery(inquiriesQuery, sp);
+const { status } = query;
+// satu halaman (INBOX_PAGE_SIZE) + hitungan per status. Triase "Baru": yang paling lama menunggu di atas.
+// ?inq=<id> tanpa ?page = halaman yang memuat inquiry itu (tautan dari Ringkasan / Discord).
+const { items, counts, total, page, pages, pageSize } = await api<InquiriesResponse>(
+  Astro,
+  apiPath("/api/inquiries", { status, page: sp.has("page") ? query.page : "", inq: query.inq }),
+);
 
 const activeLabel = status ? labelOf(INQUIRY_STATUS_ALL, status) : "Semua inquiry";
 // status lama "Selesai" (CLOSED) hanya tampil sebagai segmen bila masih ada datanya
-const legacy = Object.entries(INQUIRY_STATUS_LEGACY).filter(([k]) => all.some((q) => q.status === k));
+const legacy = Object.entries(INQUIRY_STATUS_LEGACY).filter(([k]) => (counts[k] ?? 0) > 0);
+const allCount = Object.values(counts).reduce((a, b) => a + b, 0);
 const filterItems = [
-  { href: "/dashboard/inbox", label: "Semua", current: !status, count: all.length },
+  { href: "/dashboard/inbox", label: "Semua", current: !status, count: allCount },
   ...[...Object.entries(INQUIRY_STATUS), ...legacy].map(([k, v]) => ({
     href: `/dashboard/inbox?status=${k}`,
     label: v.label,
     current: status === k,
-    count: all.filter((q) => q.status === k).length,
+    count: counts[k] ?? 0,
   })),
 ].map((i) => ({ ...i, countSr: "inquiry" }));
+// halaman: 1 … (page-2 … page+2) … pages
+const pageHref = (n: number) => apiPath("/dashboard/inbox", { status, page: n > 1 ? n : "" }) + "#h-inbox";
+const pageNums = [...new Set([1, ...Array.from({ length: 5 }, (_, i) => page - 2 + i), pages])]
+  .filter((n) => n >= 1 && n <= pages)
+  .sort((a, b) => a - b);
+const from = total ? (page - 1) * pageSize + 1 : 0;
+const to = Math.min(page * pageSize, total);
 // lewat janji website (1×24 jam) dan masih Baru
 const overdueReply = (q: Inquiry) => q.status === "NEW" && hoursSince(q.createdAt) >= REPLY_WITHIN_HOURS;
 const waitingDays = (q: Inquiry) => Math.max(1, Math.floor(hoursSince(q.createdAt) / 24));
@@ -68,8 +80,9 @@ const mailto = (q: Inquiry) => {
       <h2 class="vh" id="h-inbox">{activeLabel}</h2>
       <p class="cap num list-meta">
         <span>
-          {items.length} inquiry{status && ` berstatus ${activeLabel}`}
-          {status === "NEW" && items.length > 1 && " · terlama menunggu di atas"}
+          {total} inquiry{status && ` berstatus ${activeLabel}`}
+          {pages > 1 && ` · ${from}–${to}`}
+          {status === "NEW" && total > 1 && " · terlama menunggu di atas"}
         </span>
       </p>
       <span tabindex="-1" data-anchor-fallback class="vh">Daftar {activeLabel}</span>
@@ -190,6 +203,38 @@ const mailto = (q: Inquiry) => {
           </ul>
         )
       }
+      {
+        pages > 1 && (
+          <nav class="pager" aria-label="Halaman inbox">
+            {page > 1 ? (
+              <a href={pageHref(page - 1)} class="btn btn-sm" rel="prev">
+                Sebelumnya
+              </a>
+            ) : null}
+            {pageNums.map((n, i) => (
+              <>
+                {i > 0 && n - pageNums[i - 1]! > 1 && <span class="t-2" aria-hidden="true">…</span>}
+                {n === page ? (
+                  <span class="btn btn-sm pager-cur num" aria-current="page">
+                    <span class="vh">Halaman </span>
+                    {n}
+                  </span>
+                ) : (
+                  <a href={pageHref(n)} class="btn btn-sm btn-quiet num">
+                    <span class="vh">Halaman </span>
+                    {n}
+                  </a>
+                )}
+              </>
+            ))}
+            {page < pages ? (
+              <a href={pageHref(page + 1)} class="btn btn-sm" rel="next">
+                Berikutnya
+              </a>
+            ) : null}
+          </nav>
+        )
+      }
     </section>
   </div>
 </Dash>
@@ -209,6 +254,18 @@ const mailto = (q: Inquiry) => {
 </script>
 
 <style>
+  /* navigasi halaman Inbox (INBOX_PAGE_SIZE per halaman) */
+  .pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+    margin-top: var(--s-4);
+  }
+  .pager-cur {
+    font-weight: var(--fw-semibold);
+    pointer-events: none;
+  }
   /* baris inquiry: titik baru | isi; aksi di baris sendiri di bawah isi (4 tombol tidak memeras pesannya) */
   .inq {
     display: grid;

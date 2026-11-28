@@ -360,7 +360,7 @@ describe("_back #fragment", () => {
     expect(r2.loc).toBe("/x?ok=task-status-in-progress");
   });
   test("inquiry status → code per status, fragment kept, fallback inbox", async () => {
-    const list = (await get("/api/inquiries", { cookie: adminCookie })).body;
+    const list = (await get("/api/inquiries", { cookie: adminCookie })).body.items;
     const id = list.find((x: any) => x.name === "N0").id;
     const r = await post(
       `/api/inquiries/${id}/status`,
@@ -426,7 +426,9 @@ describe("/api/dashboard", () => {
     expect(D).toMatchObject({ late: false, atRisk: true, doneTasks: 0, totalTasks: 2, elapsed: 0.5, daysLeft: 10 });
     expect(G).toMatchObject({ late: false, atRisk: false, elapsed: null, daysLeft: 30, totalTasks: 2 });
     expect(D.lead.id).toBe(member);
-    expect(Array.isArray(A.tasks)).toBe(true);
+    // hanya hitungan, bukan daftar tugas per proyek (ringkasan tidak memuat semua tugas)
+    expect(A.tasks).toBeUndefined();
+    expect(A.description).toBeUndefined();
   });
   test("myTasks capped at 8 but myOpenTasks is the true total", async () => {
     const extra: string[] = [];
@@ -497,7 +499,7 @@ describe("drill-down filters", () => {
     expect(qd.counts.ALL).toBe(1);
   });
   test("/api/inquiries?status still works", async () => {
-    const n = (await get("/api/inquiries?status=CLOSED", { cookie: adminCookie })).body;
+    const n = (await get("/api/inquiries?status=CLOSED", { cookie: adminCookie })).body.items;
     expect(n.map((x: any) => x.name)).toEqual(["Q3"]);
   });
 });
@@ -806,7 +808,7 @@ describe("project ok codes", () => {
     );
   });
   test("inquiry delete", async () => {
-    const list = (await get("/api/inquiries", { cookie: adminCookie })).body;
+    const list = (await get("/api/inquiries", { cookie: adminCookie })).body.items;
     const id = list.find((x: any) => x.name === "Web2").id;
     expect((await post(`/api/inquiries/${id}/delete`, {}, { cookie: adminCookie })).loc).toBe(
       "/dashboard/inbox?ok=inquiry-deleted",
@@ -1000,7 +1002,7 @@ describe("audit2: permissions (F4) and missing records", () => {
       "admin-only-delete",
     );
     expect(await repo.portfolio.get(ids.pfE)).not.toBe(null);
-    const inq = (await get("/api/inquiries", { cookie: adminCookie })).body.find((x: any) => x.name === "Q1");
+    const inq = (await get("/api/inquiries", { cookie: adminCookie })).body.items.find((x: any) => x.name === "Q1");
     expect(errOf((await post(`/api/inquiries/${inq.id}/delete`, {}, { cookie: memberCookie })).loc)).toBe(
       "admin-only-delete",
     );
@@ -1183,7 +1185,7 @@ describe("audit2: workflow", () => {
     await repo.projects.setStatus(ids.D, "PLANNING");
   });
   test("F2: project from inquiry marks it Jadi proyek (WON)", async () => {
-    const inq = (await get("/api/inquiries", { cookie: adminCookie })).body.find((x: any) => x.name === "Q2");
+    const inq = (await get("/api/inquiries", { cookie: adminCookie })).body.items.find((x: any) => x.name === "Q2");
     expect((await get(`/api/inquiries/${inq.id}`, { cookie: adminCookie })).body.name).toBe("Q2");
     const r = await post(
       "/api/projects",
@@ -1333,7 +1335,7 @@ describe("audit2: Discord notifications (mocked fetch, test DB only)", () => {
     expect(sent.length).toBe(1);
     const body = JSON.stringify(sent[0]!.body);
     expect(body).toContain("Notif Sender");
-    expect(body).toContain("/dashboard/inbox?status=NEW#inq-");
+    expect(body).toContain("/dashboard/inbox?status=NEW&inq=");
     expect(sent[0]!.body.allowed_mentions).toEqual({ parse: [], users: [] });
   });
   test("a failing webhook never breaks the public form", async () => {

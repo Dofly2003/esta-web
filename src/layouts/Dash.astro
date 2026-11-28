@@ -24,7 +24,8 @@ interface Props {
 }
 const { title, trail = [], inlineErrors = [] } = Astro.props;
 const user = Astro.locals.user!;
-const { newInquiries } = await api<NavSummary>(Astro, "/api/nav");
+// dimulai middleware bersamaan dengan data halaman (lihat src/middleware.ts)
+const { newInquiries } = await (Astro.locals.nav ?? api<NavSummary>(Astro, "/api/nav"));
 const path = Astro.url.pathname;
 // pesan flash dari redirect API (?ok=<kode> / ?err=<kode>); hanya kode yang dikenal, teks dari shared/messages.ts.
 // Menempel di bawah top bar; tombol tutup = URL yang sama tanpa ?ok/?err (forms.ts juga menghapusnya dari URL).
@@ -231,6 +232,17 @@ const themes = [
 
 <script>
   import { enhance } from "../components/dash/forms";
+
+  // Konfirmasi tombol hapus / tayang (data-confirm dari confirmAttr). Fase capture: berjalan sebelum listener lain,
+  // sama seperti onclick inline dulu (dibatalkan = preventDefault, form tidak terkirim).
+  document.addEventListener(
+    "click",
+    (e) => {
+      const b = (e.target as Element | null)?.closest?.<HTMLElement>("[data-confirm]");
+      if (b && !confirm(b.dataset.confirm ?? "")) e.preventDefault();
+    },
+    true,
+  );
   enhance();
 
   // Kembali lewat tombol Back dari cache (bfcache): muat ulang supaya sesi dicek lagi (mis. setelah Keluar).

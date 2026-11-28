@@ -4,8 +4,9 @@
  * Ganti lewat keyboard tidak langsung mengirim: Enter atau tombol Simpan (lihat forms.ts). */
 export const autoSubmit = { "data-autosubmit": "" };
 
-/** Atribut untuk tombol hapus / publikasi dengan konfirmasi */
-export const confirmAttr = (msg: string) => ({ onclick: `return confirm(${JSON.stringify(msg)})` });
+/** Atribut untuk tombol hapus / publikasi dengan konfirmasi. Ditangani skrip Dash.astro (bukan onclick inline:
+ * CSP tidak mengizinkan event handler inline). */
+export const confirmAttr = (msg: string) => ({ "data-confirm": msg });
 
 /** Atribut tautan ke tab baru (dipakai NavItem & ViewOnSite); tambahkan teks "(tab baru)" untuk pembaca layar */
 export const externalAttrs = { target: "_blank", rel: "noopener noreferrer" } as const;

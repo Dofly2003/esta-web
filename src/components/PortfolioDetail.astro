@@ -3,11 +3,11 @@
 import Cover from "./Cover.astro";
 import PortfolioCard from "./PortfolioCard.astro";
 import RollButton from "./RollButton.astro";
-import type { PortfolioItem } from "@shared/types";
+import type { PortfolioCard as Card, PortfolioPublic } from "@shared/types";
 
 interface Props {
-  item: PortfolioItem;
-  others: PortfolioItem[];
+  item: PortfolioPublic;
+  others: Card[];
 }
 const { item, others } = Astro.props;
 const tags = item.tags

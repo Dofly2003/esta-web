@@ -3,6 +3,7 @@
 // - Jaringan: fetch global diganti perekam; tidak ada tes yang bisa menghubungi Discord / internet.
 // - Zona waktu: ESTA_TEST_TZ → process.env.TZ. Di Windows `bun test` mengabaikan TZ dari lingkungan
 //   (selalu UTC), tetapi TZ yang diset dari dalam proses dipakai; scripts/test-server.ts menjalankan matriks TZ.
+import { beforeEach } from "bun:test";
 import { mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -76,3 +77,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   net.calls.push({ url, body, init });
   return net.respond(url, init);
 }) as typeof fetch;
+
+// Batas kiriman form Kontak (server/api.ts) memakai jam; tes membekukan jam, jadi jendelanya dikosongkan per tes
+// (tes batas itu sendiri mengirim berulang di dalam satu tes).
+beforeEach(() => (globalThis as { __ESTA_RESET_LIMITS__?: () => void }).__ESTA_RESET_LIMITS__?.());

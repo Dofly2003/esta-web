@@ -1,19 +1,24 @@
 // Koneksi database lewat libSQL:
 // - Lokal  : file SQLite (DATABASE_PATH, default data/esta.sqlite)
 // - Online : Turso (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN) — SQLite di cloud
+// Catatan kinerja (lokal / self-host saja): klien file libSQL menjalankan query secara SINKRON di thread utama,
+// jadi query lambat menahan semua request lain selama berjalan. Karena itu setiap endpoint memakai query terarah
+// (indeks migrasi #2, tanpa memuat seluruh tabel) dalam satu batch (readMany). Di Vercel + Turso query berjalan
+// async lewat HTTP. Backend bun:sqlite untuk file: lebih cepat tapi berarti dua driver; belum dipakai.
 import { createClient, type Client, type InArgs, type Row } from "@libsql/client";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { envDatabaseUrl, envOf } from "./env";
 
-const remote = process.env.TURSO_DATABASE_URL;
+const remote = envDatabaseUrl();
 let url = remote;
 if (!url) {
-  const path = resolve(process.env.DATABASE_PATH || "data/esta.sqlite");
+  const path = resolve(envOf("DATABASE_PATH"));
   mkdirSync(dirname(path), { recursive: true });
   url = "file:" + path.replace(/\\/g, "/");
 }
 
-export const client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN, intMode: "number" });
+export const client = createClient({ url, authToken: envOf("TURSO_AUTH_TOKEN") || undefined, intMode: "number" });
 const isRemote = !!remote;
 
 const migrations: string[] = [
@@ -96,6 +101,13 @@ const migrations: string[] = [
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );`,
+  /* 2: indeks untuk ringkasan / daftar (hitungan per status, Inbox per halaman, sapu sesi kedaluwarsa) */ `
+  CREATE INDEX IF NOT EXISTS inquiries_status_created ON inquiries(status, created_at);
+  CREATE INDEX IF NOT EXISTS inquiries_created ON inquiries(created_at);
+  CREATE INDEX IF NOT EXISTS portfolio_project ON portfolio(project_id);
+  CREATE INDEX IF NOT EXISTS portfolio_pub_order ON portfolio(published, sort_order, year);
+  CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires_at);
+  CREATE INDEX IF NOT EXISTS tasks_status_project ON tasks(status, project_id);`,
 ];
 
 const appliedVersion = async (c: Pick<Client, "execute">) =>
@@ -164,13 +176,20 @@ export async function run(sql: string, args: InArgs = {}) {
 /** Satu perintah SQL dengan argumen (untuk batch) */
 export type Stmt = { sql: string; args?: InArgs };
 
+const toBatch = (stmts: Stmt[]) => stmts.map((s) => ({ sql: s.sql, args: s.args ?? {} }));
+
 /** Beberapa perintah tulis sekaligus secara atomik */
 export async function batch(stmts: Stmt[]) {
   await ready();
-  await client.batch(
-    stmts.map((s) => ({ sql: s.sql, args: s.args ?? {} })),
-    "write",
-  );
+  await client.batch(toBatch(stmts), "write");
+}
+
+/** Beberapa query baca sekaligus: satu round trip ke Turso dan satu snapshot yang konsisten (di file lokal: satu
+ * transaksi baca). Hasil = baris per pernyataan, urutannya sama dengan `stmts`. */
+export async function readMany(stmts: Stmt[]): Promise<Row[][]> {
+  await ready();
+  if (stmts.length === 1) return [(await client.execute(toBatch(stmts)[0]!)).rows];
+  return (await client.batch(toBatch(stmts), "read")).map((r) => r.rows);
 }
 
 export const now = () => new Date().toISOString();

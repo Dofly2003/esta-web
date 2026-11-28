@@ -9,9 +9,9 @@ import EmptyState from "../../../components/dash/EmptyState.astro";
 import { confirmAttr, coverBg } from "../../../components/dash/ui";
 import { api } from "../../../lib/api";
 import { MAX_FEATURED } from "@shared/constants";
-import type { PortfolioItem } from "@shared/types";
+import type { PortfolioRow } from "@shared/types";
 
-const items = await api<PortfolioItem[]>(Astro, "/api/portfolio");
+const items = await api<PortfolioRow[]>(Astro, "/api/portfolio");
 const nPublished = items.filter((i) => i.published).length;
 // unggulan yang benar-benar tampil di Beranda harus tayang
 const nFeatured = items.filter((i) => i.featured && i.published).length;

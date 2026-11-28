@@ -11,21 +11,15 @@ import Due from "../../components/dash/Due.astro";
 import SegFilter from "../../components/dash/SegFilter.astro";
 import InquiryList from "../../components/dash/InquiryList.astro";
 import { api } from "../../lib/api";
-import { APP_TZ, isAdmin, PRIORITY, PROJECT_STATUS, REPLY_WITHIN_HOURS } from "@shared/constants";
-import { agoText, fmtDate, hoursSince, isLate } from "@shared/format";
+import { isAdmin, PRIORITY, PROJECT_STATUS, REPLY_WITHIN_HOURS } from "@shared/constants";
+import { agoText, fmtDate, fmtLongDate, hoursSince, isLate } from "@shared/format";
 import type { ActiveProject, DashboardSummary } from "@shared/types";
 
 const user = Astro.locals.user!;
 const admin = isAdmin(user);
 const d = await api<DashboardSummary>(Astro, "/api/dashboard");
 
-const todayLabel = new Intl.DateTimeFormat("id-ID", {
-  weekday: "long",
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  timeZone: APP_TZ,
-}).format(new Date());
+const todayLabel = fmtLongDate();
 
 // cakupan tile deadline: anggota melihat tugasnya sendiri dulu, admin melihat tim (?cakupan= menimpa)
 const rawScope = Astro.url.searchParams.get("cakupan");

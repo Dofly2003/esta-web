@@ -34,7 +34,7 @@ const waitDays = (iso: string) => Math.max(1, Math.floor(hoursSince(iso) / 24));
             const late = hoursSince(q.createdAt) >= REPLY_WITHIN_HOURS;
             return (
               <li>
-                <a href={`/dashboard/inbox?status=NEW#inq-${q.id}`} class="trow">
+                <a href={`/dashboard/inbox?status=NEW&inq=${encodeURIComponent(q.id)}#inq-${q.id}`} class="trow">
                   <span class="trow-title ell">
                     {q.name}
                     {q.company && <span class="t-2"> · {q.company}</span>}

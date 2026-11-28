@@ -129,6 +129,7 @@ export const ERR = {
   "discord-id-invalid": "Discord ID berupa 17–20 digit angka (bukan username).",
   "password-wrong": "Password lama salah.",
   "password-short": `Password baru minimal ${MIN_PASSWORD} karakter.`,
+  "password-blocked": "Terlalu banyak percobaan password lama. Coba lagi 15 menit lagi.",
   // Discord
   "webhook-invalid": "Link webhook tidak valid. Contoh: https://discord.com/api/webhooks/123…/abc…",
   "webhook-missing": "Isi dan simpan link webhook dulu.",
@@ -140,6 +141,8 @@ export const ERR = {
   "inquiry-required": "Nama, email, dan pesan wajib diisi.",
   "inquiry-email": "Format email tidak valid.",
   "inquiry-too-long": "Pesan terlalu panjang.",
+  "inquiry-rate-limited":
+    "Terlalu banyak pesan dalam waktu singkat. Coba lagi beberapa menit lagi, atau hubungi kami lewat email.",
 } as const;
 
 export type OkCode = keyof typeof OK;

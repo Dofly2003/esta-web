@@ -3,18 +3,14 @@
 // /portfolio/[slug] tetap 404 untuk draf; halaman ini memakai template yang sama + banner pratinjau.
 import Site from "../../../../layouts/Site.astro";
 import PortfolioDetail from "../../../../components/PortfolioDetail.astro";
-import { api, apiOrNull, withFlash } from "../../../../lib/api";
-import type { PortfolioEditResponse, PortfolioItem } from "@shared/types";
+import { apiOrNull, withFlash } from "../../../../lib/api";
+import type { PortfolioPreview } from "@shared/types";
 
 const id = Astro.params.id!;
-const [data, all] = await Promise.all([
-  apiOrNull<PortfolioEditResponse>(Astro, `/api/portfolio/${encodeURIComponent(id)}`),
-  api<PortfolioItem[]>(Astro, "/api/portfolio"),
-]);
-const item = data?.item;
-if (!item) return Astro.redirect(withFlash("/dashboard/portfolio", { err: "pf-not-found" }));
-// "Karya lainnya" sama dengan halaman publik: 3 karya tayang lain
-const others = all.filter((p) => p.published && p.id !== item.id).slice(0, 3);
+// karya + "karya lainnya" (sama dengan halaman publik: 3 karya tayang lain) dalam satu panggilan
+const data = await apiOrNull<PortfolioPreview>(Astro, `/api/portfolio/${encodeURIComponent(id)}/pratinjau`);
+if (!data) return Astro.redirect(withFlash("/dashboard/portfolio", { err: "pf-not-found" }));
+const { item, others } = data;
 // jangan diindeks mesin pencari (halaman juga hanya bisa dibuka setelah login)
 Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow");
 ---

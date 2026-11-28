@@ -14,26 +14,21 @@ import { api, apiPath } from "../../lib/api";
 import { MAX_TASK_LINES, PRIORITY, TASK_STATUS } from "@shared/constants";
 import { ERR, type ErrCode } from "@shared/messages";
 import { isDone } from "@shared/format";
-import type { ProjectsResponse, TasksResponse } from "@shared/types";
+import { readQuery, tasksQuery } from "@shared/schemas/query";
+import type { TasksResponse } from "@shared/types";
 
 const me = Astro.locals.user!;
 const sp = Astro.url.searchParams;
-const all = sp.get("filter") === "all";
-const showDone = sp.get("done") === "1";
 // drill-down dari ringkasan / tim: due=overdue|week, assignee=none|<id>, status=<status belum selesai>
-// (hanya tugas hidup; done diabaikan)
-const due = ["overdue", "week"].includes(sp.get("due") ?? "") ? sp.get("due")! : "";
-const assignee = /^[\w-]{1,64}$/.test(sp.get("assignee") ?? "") ? sp.get("assignee")! : "";
-const status = Object.hasOwn(TASK_STATUS, sp.get("status") ?? "") && sp.get("status") !== "DONE" ? sp.get("status")! : "";
+// (hanya tugas hidup; done diabaikan). Dibaca dengan skema yang sama dengan /api/tasks.
+const { all, showDone, due, assignee, status } = readQuery(tasksQuery, sp);
 const drill = Boolean(due || assignee || status);
 const scope = { filter: all ? "all" : "mine", assignee };
-const [{ tasks, users, counts, load }, overdueList, weekList, active] = await Promise.all([
-  api<TasksResponse>(Astro, apiPath("/api/tasks", { ...scope, done: showDone ? 1 : 0, due, status })),
-  // hitungan chip deadline untuk cakupan yang sedang dilihat (saya / tim / orang tertentu)
-  api<TasksResponse>(Astro, apiPath("/api/tasks", { ...scope, due: "overdue" })),
-  api<TasksResponse>(Astro, apiPath("/api/tasks", { ...scope, due: "week" })),
-  api<ProjectsResponse>(Astro, "/api/projects?status=ACTIVE"),
-]);
+// satu panggilan: daftar + hitungan chip deadline untuk cakupan ini (scopeCounts) + pilihan proyek berjalan
+const { tasks, users, counts, scopeCounts, load, projectOptions } = await api<TasksResponse>(
+  Astro,
+  apiPath("/api/tasks", { ...scope, done: showDone ? 1 : 0, due, status }),
+);
 
 // tautan filter yang mempertahankan filter lain
 const cur = { filter: all ? "all" : "", done: showDone && !drill ? "1" : "", due, assignee, status };
@@ -58,8 +53,8 @@ const whoItems = [
 // label pendek (konteks "Deadline" dari nama grup) supaya muat satu baris di ponsel
 const dueItems = [
   { href: link({ due: "" }), label: "Semua", title: "Semua deadline", current: !due },
-  { href: link({ due: "overdue", done: "" }), label: "Lewat", title: "Lewat deadline", count: overdueList.tasks.length, countSr: "tugas lewat deadline", current: due === "overdue" },
-  { href: link({ due: "week", done: "" }), label: "7 hari", title: "Deadline 7 hari ke depan", count: weekList.tasks.length, countSr: "tugas deadline 7 hari ke depan", current: due === "week" },
+  { href: link({ due: "overdue", done: "" }), label: "Lewat", title: "Lewat deadline", count: scopeCounts.overdue, countSr: "tugas lewat deadline", current: due === "overdue" },
+  { href: link({ due: "week", done: "" }), label: "7 hari", title: "Deadline 7 hari ke depan", count: scopeCounts.week, countSr: "tugas deadline 7 hari ke depan", current: due === "week" },
 ];
 const columns = Object.entries(TASK_STATUS).filter(([k]) => (status ? k === status : (showDone && !drill) || k !== "DONE"));
 const nDone = tasks.filter(isDone).length;
@@ -92,7 +87,7 @@ const defaultWho = !all && !assignee ? me.id : person?.id ?? "";
 
 <Dash title="Tugas" inlineErrors={ADD_ERRS}>
   {
-    active.projects.length > 0 && (
+    projectOptions.length > 0 && (
       <a slot="actions" href="#tambah-tugas" data-focus="#qt-title" class="btn btn-sm">
         <Icon name="plus" class="ic-sm" />
         Tambah tugas
@@ -113,7 +108,7 @@ const defaultWho = !all && !assignee ? me.id : person?.id ?? "";
       )
     }
     {
-      active.projects.length > 0 && (
+      projectOptions.length > 0 && (
         <Disclosure icon="plus" label="Tambah tugas" id="tambah-tugas" class="panel is-add" open={!!addErr || !!baru}>
           <form
             method="post"
@@ -143,7 +138,7 @@ const defaultWho = !all && !assignee ? me.id : person?.id ?? "";
             <Field id="qt-project" label="Proyek" required error={addErr === "project-not-found" ? ERR[addErr] : null}>
               <select id="qt-project" name="projectId" required class="input" {...invalid("qt-project", addErr === "project-not-found")}>
                 <option value="">Pilih proyek…</option>
-                <Options from={active.projects} />
+                <Options from={projectOptions} />
               </select>
             </Field>
             <Field id="qt-who" label="Penanggung jawab">

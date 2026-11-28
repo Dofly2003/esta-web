@@ -7,11 +7,11 @@ import Due from "./Due.astro";
 import TaskActions from "./TaskActions.astro";
 import { PRIORITY } from "@shared/constants";
 import { isDone, isLate } from "@shared/format";
-import type { TaskWithRefs, User } from "@shared/types";
+import type { NamedRef, TaskWithRefs } from "@shared/types";
 
 interface Props {
   task: TaskWithRefs;
-  users: User[];
+  users: NamedRef[];
 }
 const { task: t, users } = Astro.props;
 // judul & nama proyek menuju baris tugas ini di detail proyek

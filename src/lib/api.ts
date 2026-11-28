@@ -3,9 +3,11 @@
 // Saat development: fetch ke server Bun di API_ORIGIN (default http://127.0.0.1:3001).
 import type { AstroGlobal, APIContext } from "astro";
 import type { ErrCode, OkCode } from "@shared/messages";
+import type { User } from "@shared/types";
 
-type Handler = (req: Request) => Promise<Response>;
-type Ctx = Pick<AstroGlobal | APIContext, "request">;
+/** server/api.ts handleApi(req, ip, internal): `internal.user` = user yang sudah dicari middleware */
+type Handler = (req: Request, ip?: string, internal?: { user: User | null }) => Promise<Response>;
+type Ctx = Pick<AstroGlobal | APIContext, "request"> & { locals?: App.Locals };
 
 export class ApiError extends Error {
   constructor(
@@ -25,7 +27,10 @@ export async function api<T>(ctx: Ctx, path: string): Promise<T> {
   const cookie = ctx.request.headers.get("cookie");
   if (cookie) headers.set("cookie", cookie);
   const req = new Request(new URL(path, origin), { headers });
-  const res = direct ? await direct(req) : await fetch(req);
+  // Satu proses (produksi): sesi sudah dicek middleware untuk request halaman ini, jadi API tidak mencarinya lagi.
+  // /api/me (middleware itu sendiri) dan halaman tanpa locals.user tetap mencari sesi dari cookie.
+  const user = path !== "/api/me" ? ctx.locals?.user : undefined;
+  const res = direct ? await direct(req, "internal", user ? { user } : undefined) : await fetch(req);
   const body = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new ApiError(res.status, body.error ?? `API ${res.status}`);
   return body as T;

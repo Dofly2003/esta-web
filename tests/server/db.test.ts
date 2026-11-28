@@ -47,7 +47,7 @@ describe("migrate()", () => {
     expect(outs.map((s) => s.trim())).toEqual(["0", "0", "0", "0"]);
     const c = open("cold.sqlite");
     const v = await c.execute("SELECT version FROM _migrations ORDER BY version");
-    expect(v.rows.map((r) => r.version)).toEqual([1]);
+    expect(v.rows.map((r) => r.version)).toEqual([1, 2]);
     expect(await tables(c)).toEqual([
       "_migrations",
       "inquiries",
@@ -63,7 +63,7 @@ describe("migrate()", () => {
     const c = open("cold.sqlite");
     await migrate(c, true);
     await migrate(c, true);
-    expect((await c.execute("SELECT COUNT(*) AS n FROM _migrations")).rows[0]!.n).toBe(1);
+    expect((await c.execute("SELECT COUNT(*) AS n FROM _migrations")).rows[0]!.n).toBe(2);
   });
   test("another instance records the version between our check and our write: no UNIQUE error", async () => {
     const real = open("race.sqlite");
@@ -83,15 +83,32 @@ describe("migrate()", () => {
     } as unknown as Client;
     await migrate(racing, true);
     expect(stale).toBe(false);
-    expect((await real.execute("SELECT COUNT(*) AS n FROM _migrations")).rows[0]!.n).toBe(1);
+    expect((await real.execute("SELECT COUNT(*) AS n FROM _migrations")).rows[0]!.n).toBe(2);
   });
   test("schema present but version row missing (crash before the record): migrates again without error", async () => {
     const c = open("half.sqlite");
     await migrate(c, true);
     await c.execute("DELETE FROM _migrations");
     await migrate(c, true);
-    expect((await c.execute("SELECT COUNT(*) AS n FROM _migrations")).rows[0]!.n).toBe(1);
+    expect((await c.execute("SELECT COUNT(*) AS n FROM _migrations")).rows[0]!.n).toBe(2);
     expect((await tables(c)).length).toBe(8);
+  });
+  test("migration 2 creates the list / summary indexes (idempotent)", async () => {
+    const c = open("idx.sqlite");
+    await migrate(c, true);
+    await migrate(c, true);
+    const idx = await c.execute("SELECT name FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%'");
+    expect(idx.rows.map((r) => r.name as string).sort()).toEqual([
+      "inquiries_created",
+      "inquiries_status_created",
+      "portfolio_project",
+      "portfolio_pub_order",
+      "sessions_expires",
+      "sessions_user",
+      "tasks_assignee",
+      "tasks_project",
+      "tasks_status_project",
+    ]);
   });
 });
 

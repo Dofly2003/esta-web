@@ -11,11 +11,11 @@ import { invalid } from "./ui";
 import { MAX_LEN, PROJECT_STATUS, PROJECT_TYPES } from "@shared/constants";
 import { ERR, type ErrCode } from "@shared/messages";
 import { today } from "@shared/format";
-import type { Project, User } from "@shared/types";
+import type { NamedRef, Project } from "@shared/types";
 
 interface Props {
   action: string;
-  users: User[];
+  users: NamedRef[];
   project?: Project;
   /** isian awal untuk proyek baru (mis. dari inquiry) */
   prefill?: Partial<Project>;

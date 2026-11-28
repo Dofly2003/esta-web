@@ -17,11 +17,11 @@ import StatusSelect from "./StatusSelect.astro";
 import DeleteForm from "./DeleteForm.astro";
 import { here } from "./ui";
 import { MAX_LEN, PRIORITY, TASK_STATUS } from "@shared/constants";
-import type { Task, User } from "@shared/types";
+import type { NamedRef, TaskEditable } from "@shared/types";
 
 interface Props {
-  task: Task;
-  users: User[];
+  task: TaskEditable;
+  users: NamedRef[];
   variant: "card" | "row";
   /** anchor tujuan setelah tugas dihapus (mis. "h-tasks") */
   afterDelete?: string;

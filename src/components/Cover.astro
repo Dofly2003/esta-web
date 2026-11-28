@@ -2,7 +2,7 @@
 import type { PortfolioItem } from "@shared/types";
 
 interface Props {
-  item: PortfolioItem;
+  item: Pick<PortfolioItem, "title" | "coverColor" | "imageUrl">;
   class?: string;
 }
 const { item, class: className = "" } = Astro.props;

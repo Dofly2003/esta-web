@@ -1,9 +1,9 @@
 ---
 import Cover from "./Cover.astro";
-import type { PortfolioItem } from "@shared/types";
+import type { PortfolioCard } from "@shared/types";
 
 interface Props {
-  item: PortfolioItem;
+  item: PortfolioCard;
   index?: number;
   /** level judul kartu, mengikuti struktur heading halaman */
   level?: "h2" | "h3";

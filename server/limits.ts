@@ -42,6 +42,11 @@ export class FailWindow {
     this.entries.delete(key);
   }
 
+  /** Kosongkan semua kunci (hanya tes) */
+  clearAll() {
+    this.entries.clear();
+  }
+
   get size() {
     return this.entries.size;
   }

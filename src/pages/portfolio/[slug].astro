@@ -2,9 +2,9 @@
 import Site from "../../layouts/Site.astro";
 import PortfolioDetail from "../../components/PortfolioDetail.astro";
 import { apiOrNull } from "../../lib/api";
-import type { PortfolioItem } from "@shared/types";
+import type { PublicPortfolioDetail } from "@shared/types";
 
-const data = await apiOrNull<{ item: PortfolioItem; others: PortfolioItem[] }>(
+const data = await apiOrNull<PublicPortfolioDetail>(
   Astro,
   `/api/public/portfolio/${encodeURIComponent(Astro.params.slug!)}`,
 );

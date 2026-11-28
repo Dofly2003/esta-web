@@ -7,9 +7,9 @@ import Orb from "../components/Orb.astro";
 import PortfolioCard from "../components/PortfolioCard.astro";
 import { api } from "../lib/api";
 import { BRAND, PERKS, SERVICES, SERVICE_GROUPS } from "@shared/constants";
-import type { PortfolioItem } from "@shared/types";
+import type { PublicHome } from "@shared/types";
 
-const { featured, stats } = await api<{ featured: PortfolioItem[]; stats: { done: number; clients: number } }>(
+const { featured, stats } = await api<PublicHome>(
   Astro,
   "/api/public/home",
 );

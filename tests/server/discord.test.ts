@@ -186,7 +186,7 @@ describe("message building (no network)", () => {
     expect(b.content).toBe("📨 Inquiry baru dari **Bos x**. Website menjanjikan balasan maks. 1×24 jam.");
     expect(b.allowed_mentions).toEqual({ parse: [], users: [] });
     expect(b.embeds[0].title).toBe("Inquiry: Bos x · PT Y");
-    expect(b.embeds[0].url).toBe("https://esta-web.vercel.app/dashboard/inbox?status=NEW#inq-i1");
+    expect(b.embeds[0].url).toBe("https://esta-web.vercel.app/dashboard/inbox?status=NEW&inq=i1#inq-i1");
     expect(b.embeds[0].fields.map((f: { value: string }) => f.value)).toEqual(["PT Y", "—", "—"]);
     setEnv("VERCEL_PROJECT_PRODUCTION_URL", undefined);
   });

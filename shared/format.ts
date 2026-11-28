@@ -47,9 +47,41 @@ export function fmtDate(d: DateLike) {
   return Number.isNaN(x.getTime()) ? "—" : fmtMoment.format(x);
 }
 
+const fmtLong = new Intl.DateTimeFormat("id-ID", {
+  weekday: "long",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: APP_TZ,
+});
+/** "Jumat, 27 Nov 2026" di APP_TZ (formatter dibuat sekali, bukan per request) */
+export const fmtLongDate = (d: Date = new Date()) => fmtLong.format(d);
+
+// Cache per menit UTC: setiap offset zona waktu IANA adalah kelipatan 15 menit, jadi pergantian hari di APP_TZ selalu
+// jatuh tepat di awal satu menit UTC. Hasilnya sama persis dengan isoDay(new Date()), tapi formatToParts (mahal,
+// dipanggil per tugas oleh relDays/isOverdue/sort) hanya dihitung sekali per menit. Kunci dari Date.now(), jadi
+// setSystemTime di tes tetap berlaku.
+let todayMinute = Number.NaN;
+let todayValue = "";
+let todayNum = 0;
+function refreshToday() {
+  const m = Math.floor(Date.now() / 60_000);
+  if (m !== todayMinute) {
+    todayValue = isoDay(new Date(m * 60_000));
+    todayNum = dayNum(todayValue);
+    todayMinute = m;
+  }
+}
+
 /** Tanggal hari ini (APP_TZ) sebagai "YYYY-MM-DD" */
 export function today() {
-  return isoDay(new Date());
+  refreshToday();
+  return todayValue;
+}
+/** dayNum(today()), dari cache yang sama */
+function todayDayNum() {
+  refreshToday();
+  return todayNum;
 }
 
 /** Tahun berjalan (APP_TZ) */
@@ -57,13 +89,13 @@ export const currentYear = () => Number(today().slice(0, 4));
 
 /** Hari ini ± n hari (APP_TZ) sebagai "YYYY-MM-DD" */
 export function dayOffset(n: number) {
-  return new Date((dayNum(today()) + n) * DAY_MS).toISOString().slice(0, 10);
+  return new Date((todayDayNum() + n) * DAY_MS).toISOString().slice(0, 10);
 }
 
 /** Selisih hari dari hari ini (APP_TZ): 0 = hari ini, 3 = tiga hari lagi, -2 = dua hari lalu; null bila kosong */
 export function relDays(d: DateLike) {
   const day = d ? dayOf(d) : null;
-  return day ? dayNum(day) - dayNum(today()) : null;
+  return day ? dayNum(day) - todayDayNum() : null;
 }
 
 export function isOverdue(d: DateLike, done = false) {
@@ -103,7 +135,7 @@ export function elapsed(p: { startDate: string | null; dueDate: string | null })
   if (!p.startDate || !p.dueDate || !ISO_DAY_RE.test(p.startDate) || !ISO_DAY_RE.test(p.dueDate)) return null;
   const start = dayNum(p.startDate);
   const span = dayNum(p.dueDate) - start;
-  const t = dayNum(today());
+  const t = todayDayNum();
   if (span <= 0) return t >= start ? 1 : 0;
   return Math.min(1, Math.max(0, (t - start) / span));
 }

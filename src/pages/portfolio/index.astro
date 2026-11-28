@@ -5,10 +5,10 @@ import PixelCorner from "../../components/PixelCorner.astro";
 import PortfolioCard from "../../components/PortfolioCard.astro";
 import { api } from "../../lib/api";
 import { PORTFOLIO_CATEGORIES } from "@shared/constants";
-import type { PortfolioItem } from "@shared/types";
+import type { PortfolioCard as Card } from "@shared/types";
 
 const kategori = Astro.url.searchParams.get("kategori") ?? "";
-const items = await api<PortfolioItem[]>(
+const items = await api<Card[]>(
   Astro,
   `/api/public/portfolio${kategori ? `?kategori=${encodeURIComponent(kategori)}` : ""}`,
 );

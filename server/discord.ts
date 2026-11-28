@@ -5,6 +5,11 @@ import { settings } from "./repo";
 import type { Inquiry, Project, Task, User } from "../shared/types";
 import { labelOf, PRIORITY, PROJECT_STATUS, PROJECT_TYPES } from "../shared/constants";
 import { cutText, fmtDate } from "../shared/format";
+import { envOf } from "./env";
+import { logError } from "./log";
+import { isWebhookUrl } from "./schemas/fields";
+
+export { isWebhookUrl };
 
 const COLORS = {
   HIGH: 0xe11d48,
@@ -18,6 +23,9 @@ const COLORS = {
 /** Batas waktu kirim notifikasi yang ditunggu request (tugas, PJ proyek). Di serverless (Vercel) kiriman yang
  * tidak ditunggu bisa hilang saat instance dibekukan, jadi semua notifikasi ditunggu dengan batas pendek. */
 export const NOTIFY_TIMEOUT_MS = 4000;
+/** Paling lama sekian notifikasi tugas / PJ proyek ditunggu request simpan (kiriman tetap berjalan sampai
+ * NOTIFY_TIMEOUT_MS; Discord yang lambat tidak lagi memperlambat Simpan sampai 4 detik) */
+export const NOTIFY_CAP_MS = 2500;
 /** Batas untuk notifikasi inquiry baru dari form Kontak publik (form tetap cepat) */
 export const INQUIRY_NOTIFY_CAP_MS = 2500;
 /** Pesan uji dari halaman Tim: admin menunggu hasilnya, jadi boleh lebih lama */
@@ -25,16 +33,11 @@ const TEST_TIMEOUT_MS = 8000;
 
 /** Alamat website untuk link di pesan: SITE_URL, lalu domain produksi Vercel (env sistem Vercel), lalu localhost */
 function siteUrl() {
-  if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/$/, "");
-  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+  const site = envOf("SITE_URL");
+  if (site) return site.replace(/\/$/, "");
+  const vercel = envOf("VERCEL_PROJECT_PRODUCTION_URL") || envOf("VERCEL_URL");
   if (vercel) return `https://${vercel.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
-  return process.env.NODE_ENV === "production"
-    ? `http://localhost:${process.env.PORT || 3000}`
-    : "http://localhost:4321";
-}
-
-export function isWebhookUrl(url: string) {
-  return /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(url);
+  return envOf("NODE_ENV") === "production" ? `http://localhost:${envOf("PORT")}` : "http://localhost:4321";
 }
 
 /** Teks mention: <@id> jika Discord ID diisi, kalau tidak nama biasa (tebal) */
@@ -94,7 +97,8 @@ async function safe(fn: () => Promise<unknown>, capMs?: number) {
   const work = fn().then(
     () => true,
     (e) => {
-      console.error("[discord] gagal kirim notifikasi:", e);
+      // hanya ringkasan error: error fetch Bun membawa URL webhook lengkap (dengan token)
+      logError("[discord] gagal kirim notifikasi:", e);
       return true;
     },
   );
@@ -103,7 +107,7 @@ async function safe(fn: () => Promise<unknown>, capMs?: number) {
   const cap = new Promise<false>((resolve) => (timer = setTimeout(() => resolve(false), capMs)));
   const finished = await Promise.race([work, cap]);
   clearTimeout(timer);
-  if (!finished) console.error(`[discord] notifikasi melewati batas ${capMs} ms, tidak ditunggu lagi`);
+  if (!finished) logError(`[discord] notifikasi melewati batas ${capMs} ms, tidak ditunggu lagi`);
 }
 
 export function notifyTaskAssigned(opts: {
@@ -118,19 +122,21 @@ export function notifyTaskAssigned(opts: {
     { name: "📅 Deadline", value: deadline(task.dueDate), inline: true },
     { name: "⚡ Prioritas", value: labelOf(PRIORITY, task.priority), inline: true },
   ];
-  return safe(() =>
-    send(
-      `📌 ${who(assignee)}, ada tugas baru untuk Anda.`,
-      {
-        title: task.title,
-        url: taskUrl(project.id, task.id),
-        description: task.description ? task.description.slice(0, 500) : undefined,
-        color: COLORS[task.priority as keyof typeof COLORS] ?? COLORS.MEDIUM,
-        fields,
-        footer: { text: `Ditugaskan oleh ${by.name}` },
-      },
-      mentions(assignee),
-    ),
+  return safe(
+    () =>
+      send(
+        `📌 ${who(assignee)}, ada tugas baru untuk Anda.`,
+        {
+          title: task.title,
+          url: taskUrl(project.id, task.id),
+          description: task.description ? task.description.slice(0, 500) : undefined,
+          color: COLORS[task.priority as keyof typeof COLORS] ?? COLORS.MEDIUM,
+          fields,
+          footer: { text: `Ditugaskan oleh ${by.name}` },
+        },
+        mentions(assignee),
+      ),
+    NOTIFY_CAP_MS,
   );
 }
 
@@ -140,23 +146,25 @@ export function notifyProjectLead(opts: {
   by: User;
 }) {
   const { project, lead, by } = opts;
-  return safe(() =>
-    send(
-      `🧭 ${who(lead)}, Anda sekarang **PJ (penanggung jawab)** proyek ini.`,
-      {
-        title: project.name,
-        url: projectUrl(project.id),
-        color: COLORS.PROJECT,
-        fields: [
-          { name: "🏢 Klien", value: project.client, inline: true },
-          { name: "🧩 Jenis", value: labelOf(PROJECT_TYPES, project.type), inline: true },
-          { name: "📅 Deadline", value: deadline(project.dueDate), inline: true },
-          { name: "📊 Status", value: labelOf(PROJECT_STATUS, project.status), inline: true },
-        ],
-        footer: { text: `Ditetapkan oleh ${by.name}` },
-      },
-      mentions(lead),
-    ),
+  return safe(
+    () =>
+      send(
+        `🧭 ${who(lead)}, Anda sekarang **PJ (penanggung jawab)** proyek ini.`,
+        {
+          title: project.name,
+          url: projectUrl(project.id),
+          color: COLORS.PROJECT,
+          fields: [
+            { name: "🏢 Klien", value: project.client, inline: true },
+            { name: "🧩 Jenis", value: labelOf(PROJECT_TYPES, project.type), inline: true },
+            { name: "📅 Deadline", value: deadline(project.dueDate), inline: true },
+            { name: "📊 Status", value: labelOf(PROJECT_STATUS, project.status), inline: true },
+          ],
+          footer: { text: `Ditetapkan oleh ${by.name}` },
+        },
+        mentions(lead),
+      ),
+    NOTIFY_CAP_MS,
   );
 }
 
@@ -170,19 +178,21 @@ export function notifyTasksAssigned(opts: {
   const { tasks, project, assignee, by } = opts;
   const lines = tasks.slice(0, 15).map((t) => `• [${plain(t.title, 120)}](${taskUrl(project.id, t.id)})`);
   if (tasks.length > lines.length) lines.push(`… dan ${tasks.length - lines.length} lainnya`);
-  return safe(() =>
-    send(
-      `📌 ${who(assignee)}, ada ${tasks.length} tugas baru untuk Anda.`,
-      {
-        title: `${project.name}: ${tasks.length} tugas baru`,
-        url: projectUrl(project.id),
-        description: lines.join("\n").slice(0, 3900),
-        color: COLORS.MEDIUM,
-        fields: [{ name: "📁 Proyek", value: `${project.name}\n${project.client}`, inline: true }],
-        footer: { text: `Ditugaskan oleh ${by.name}` },
-      },
-      mentions(assignee),
-    ),
+  return safe(
+    () =>
+      send(
+        `📌 ${who(assignee)}, ada ${tasks.length} tugas baru untuk Anda.`,
+        {
+          title: `${project.name}: ${tasks.length} tugas baru`,
+          url: projectUrl(project.id),
+          description: lines.join("\n").slice(0, 3900),
+          color: COLORS.MEDIUM,
+          fields: [{ name: "📁 Proyek", value: `${project.name}\n${project.client}`, inline: true }],
+          footer: { text: `Ditugaskan oleh ${by.name}` },
+        },
+        mentions(assignee),
+      ),
+    NOTIFY_CAP_MS,
   );
 }
 
@@ -203,7 +213,7 @@ export function notifyInquiry(
         `📨 Inquiry baru dari **${plain(q.name, 80)}**. Website menjanjikan balasan maks. 1×24 jam.`,
         {
           title: `Inquiry: ${plain(q.name, 80)}${q.company ? ` · ${plain(q.company, 80)}` : ""}`,
-          url: `${siteUrl()}/dashboard/inbox?status=NEW#inq-${q.id}`,
+          url: `${siteUrl()}/dashboard/inbox?status=NEW&inq=${encodeURIComponent(q.id)}#inq-${q.id}`,
           description: plain(q.message, 500),
           color: COLORS.INQUIRY,
           fields,

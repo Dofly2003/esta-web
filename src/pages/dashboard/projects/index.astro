@@ -14,18 +14,14 @@ import Options from "../../../components/dash/Options.astro";
 import { errIn } from "../../../components/dash/ui";
 import { api, apiOrNull, apiPath } from "../../../lib/api";
 import { INQUIRY_STATUS_ALL, labelOf, PROJECT_STATUS, PROJECT_TYPES } from "@shared/constants";
-import { doneCount, elapsed, fmtDate, isLate } from "@shared/format";
+import { elapsed, fmtDate, isLate } from "@shared/format";
+import { projectsQuery, readQuery, type ProjectSort } from "@shared/schemas/query";
 import type { Inquiry, Project, ProjectsResponse } from "@shared/types";
 
 const sp = Astro.url.searchParams;
-// status yang tidak dikenal diabaikan (server melakukan hal yang sama)
-const rawStatus = sp.get("status") ?? "";
-const status = rawStatus === "ACTIVE" || Object.hasOwn(PROJECT_STATUS, rawStatus) ? rawStatus : "";
-const type = Object.hasOwn(PROJECT_TYPES, sp.get("type") ?? "") ? sp.get("type")! : "";
-const q = sp.get("q") ?? "";
-const pf = sp.get("pf") === "belum" ? "belum" : "";
-const SORTS = { deadline: "Deadline", name: "Nama", progress: "Progres", updated: "Terakhir diubah" } as const;
-const sort = (Object.hasOwn(SORTS, sp.get("sort") ?? "") ? sp.get("sort") : "deadline") as keyof typeof SORTS;
+// status / jenis / urutan yang tidak dikenal diabaikan (skema yang sama dengan /api/projects)
+const { status, type, q, pf, sort } = readQuery(projectsQuery, sp);
+const SORTS: Record<ProjectSort, string> = { deadline: "Deadline", name: "Nama", progress: "Progres", updated: "Terakhir diubah" };
 const creating = sp.has("new");
 // Inbox → "Jadikan proyek": ?new=1&dari=<id inquiry> mengisi form proyek baru dari inquiry itu
 const dari = creating && /^[\w-]{1,64}$/.test(sp.get("dari") ?? "") ? sp.get("dari")! : "";
@@ -212,10 +208,10 @@ const sortHead = (key: keyof typeof SORTS) => ({ href: listHref({ sort: key === 
                       </td>
                       <Due as="td" date={p.dueDate} late={late} class="c-due num" quietClass="t-2" rel={p.status !== "DONE"} />
                       <td class="c-prog">
-                        <Progress done={doneCount(p.tasks)} total={p.tasks.length} name={p.name} elapsed={p.status === "DONE" ? null : elapsed(p)} late={late} />
-                        {p.tasks.length > 0 && (
+                        <Progress done={p.doneTasks} total={p.totalTasks} name={p.name} elapsed={p.status === "DONE" ? null : elapsed(p)} late={late} />
+                        {p.totalTasks > 0 && (
                           <span class="sub num">
-                            {doneCount(p.tasks)}/{p.tasks.length} tugas
+                            {p.doneTasks}/{p.totalTasks} tugas
                           </span>
                         )}
                       </td>
