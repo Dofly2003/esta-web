@@ -1,0 +1,48 @@
+---
+// Navigasi halaman (Inbox, satu kolom papan Tugas): Sebelumnya · 1 … (page-2 … page+2) … pages · Berikutnya.
+// Tidak dirender bila hanya satu halaman. href(n) = URL halaman n.
+interface Props {
+  page: number;
+  pages: number;
+  href: (n: number) => string;
+  /** aria-label nav, mis. "Halaman inbox" */
+  label: string;
+}
+const { page, pages, href, label } = Astro.props;
+const nums = [...new Set([1, ...Array.from({ length: 5 }, (_, i) => page - 2 + i), pages])]
+  .filter((n) => n >= 1 && n <= pages)
+  .sort((a, b) => a - b);
+---
+
+{
+  pages > 1 && (
+    <nav class="pager" aria-label={label}>
+      {page > 1 ? (
+        <a href={href(page - 1)} class="btn btn-sm" rel="prev">
+          Sebelumnya
+        </a>
+      ) : null}
+      {nums.map((n, i) => (
+        <>
+          {i > 0 && n - nums[i - 1]! > 1 && <span class="t-2" aria-hidden="true">…</span>}
+          {n === page ? (
+            <span class="btn btn-sm pager-cur num" aria-current="page">
+              <span class="vh">Halaman </span>
+              {n}
+            </span>
+          ) : (
+            <a href={href(n)} class="btn btn-sm btn-quiet num">
+              <span class="vh">Halaman </span>
+              {n}
+            </a>
+          )}
+        </>
+      ))}
+      {page < pages ? (
+        <a href={href(page + 1)} class="btn btn-sm" rel="next">
+          Berikutnya
+        </a>
+      ) : null}
+    </nav>
+  )
+}

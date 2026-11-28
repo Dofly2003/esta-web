@@ -35,7 +35,7 @@ export default defineConfig({
       directives: [
         "default-src 'self'",
         "img-src 'self' data: blob: https: http:",
-        "font-src 'self' https://fonts.gstatic.com",
+        "font-src 'self'",
         "connect-src 'self'",
         "form-action 'self'",
         "base-uri 'self'",
@@ -44,7 +44,7 @@ export default defineConfig({
       ],
       scriptDirective: { resources: ["'self'"], hashes: inlineScriptHashes() },
       styleDirective: {
-        resources: ["'self'", "https://fonts.googleapis.com", { resource: "'unsafe-inline'", kind: "attribute" }],
+        resources: ["'self'", { resource: "'unsafe-inline'", kind: "attribute" }],
       },
     },
   },

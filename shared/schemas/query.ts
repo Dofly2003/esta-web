@@ -71,21 +71,39 @@ export const tasksQuery = pipe(
   transform(({ filter, done, ...rest }) => ({ all: filter === "all", showDone: done === "1", ...rest })),
 );
 
-/** Ukuran halaman Inbox */
-export const INBOX_PAGE_SIZE = 25;
-
-/** GET /api/inquiries dan /dashboard/inbox */
-export const inquiriesQuery = object({
-  status: only((v) => Object.hasOwn(INQUIRY_STATUS_ALL, v)),
-  // halaman 1…; selain bilangan bulat positif = 1 (halaman di atas yang terakhir dijepit oleh API)
-  page: fallback(
+/** Nomor halaman 1…; selain bilangan bulat positif = 1 (halaman di atas yang terakhir dijepit oleh API) */
+const pageNo = () =>
+  fallback(
     pipe(
       string(),
       check((v) => /^[1-9]\d{0,5}$/.test(v)),
       transform(Number),
     ),
     1,
-  ),
+  );
+
+/** Papan Tugas: kartu per kolom status (sisanya lewat "Tampilkan semua" → tampilan satu kolom) */
+export const TASK_BOARD_CAP = 30;
+/** Tampilan satu kolom papan Tugas: kartu per halaman */
+export const TASK_COL_PAGE_SIZE = 50;
+
+/** Parameter tambahan GET /api/tasks dan /dashboard/tasks (terpisah dari tasksQuery: tanpa parameter ini respons
+ * sama persis dengan dulu). board=1 → tiap kolom status maks. TASK_BOARD_CAP kartu; col=<status> → satu kolom,
+ * per halaman TASK_COL_PAGE_SIZE (page); pin=<id tugas> → tugas ini selalu ikut (baru ditambah / baru diubah). */
+export const taskBoardQuery = object({
+  board: only((v) => v === "1"),
+  col: only((v) => Object.hasOwn(TASK_STATUS, v)),
+  page: pageNo(),
+  pin: only((v) => ID_RE.test(v)),
+});
+
+/** Ukuran halaman Inbox */
+export const INBOX_PAGE_SIZE = 25;
+
+/** GET /api/inquiries dan /dashboard/inbox */
+export const inquiriesQuery = object({
+  status: only((v) => Object.hasOwn(INQUIRY_STATUS_ALL, v)),
+  page: pageNo(),
   // id inquiry yang harus ikut tampil (tautan dari Ringkasan / Discord): API memilih halaman yang memuatnya
   inq: only((v) => ID_RE.test(v)),
 });
@@ -95,4 +113,5 @@ export const publicPortfolioQuery = object({ kategori: raw() });
 
 export type ProjectsQuery = InferOutput<typeof projectsQuery>;
 export type TasksQuery = InferOutput<typeof tasksQuery>;
+export type TaskBoardQuery = InferOutput<typeof taskBoardQuery>;
 export type InquiriesQuery = InferOutput<typeof inquiriesQuery>;

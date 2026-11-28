@@ -26,6 +26,7 @@ import type {
   PublicHome,
   PublicPortfolioDetail,
   Task,
+  TaskEditResponse,
   TasksResponse,
   TeamResponse,
   User,
@@ -60,6 +61,9 @@ import {
   projectsQuery,
   publicPortfolioQuery,
   readQuery,
+  TASK_BOARD_CAP,
+  TASK_COL_PAGE_SIZE,
+  taskBoardQuery,
   tasksQuery,
   type ProjectSort,
 } from "../shared/schemas/query";
@@ -804,8 +808,31 @@ on("GET", "/api/tasks", async (c) => {
   // tugas hidup dalam cakupan ini (rows = tugas proyek berjalan dalam cakupan) → angka chip deadline
   const scoped = rows.filter((t) => !isDone(t));
   const byId = userById(allUsers);
+  // papan (board=1): tiap kolom status maks. TASK_BOARD_CAP; satu kolom (col=): per halaman. Hitungan per status
+  // selalu dari daftar utuh. Kartu hanya menampilkan 2 baris catatan (form ubah memuat tugas utuh sendiri), jadi
+  // catatan dipotong di kedua mode. Tanpa parameter ini daftar utuh seperti dulu.
+  const { board, col, page, pin } = readQuery(taskBoardQuery, c.url.searchParams);
+  const statusCounts: Record<string, number> = {};
+  for (const t of list) statusCounts[t.status] = (statusCounts[t.status] ?? 0) + 1;
+  let shown = list;
+  let colPage: TasksResponse["colPage"];
+  if (col) {
+    const inCol = list.filter((t) => t.status === col);
+    const pages = Math.max(1, Math.ceil(inCol.length / TASK_COL_PAGE_SIZE));
+    const n = Math.min(page, pages);
+    shown = inCol.slice((n - 1) * TASK_COL_PAGE_SIZE, n * TASK_COL_PAGE_SIZE);
+    colPage = { page: n, pages, total: inCol.length };
+  } else if (board) {
+    const seen: Record<string, number> = {};
+    shown = list.filter((t) => (seen[t.status] = (seen[t.status] ?? 0) + 1) <= TASK_BOARD_CAP || t.id === pin);
+  }
+  const brief = board || col;
   return json({
-    tasks: list.map((t) => ({ ...t, assignee: byId(t.assigneeId) })),
+    tasks: shown.map((t) => ({
+      ...t,
+      description: brief ? cardNote(t.description) : t.description,
+      assignee: byId(t.assigneeId),
+    })),
     users: allUsers,
     counts: { overdue: live.overdue, dueThisWeek: live.dueThisWeek, unassigned: live.unassigned },
     scopeCounts: {
@@ -815,7 +842,20 @@ on("GET", "/api/tasks", async (c) => {
     load: loadOf(byAssignee),
     // sama dengan /api/projects?status=ACTIVE (urutan deadline)
     projectOptions: active.sort(byDeadline).map((p) => ({ id: p.id, name: p.name })),
+    statusCounts,
+    ...(colPage ? { colPage } : {}),
   } satisfies TasksResponse);
+});
+
+/** Catatan di kartu papan: 2 baris terlihat, jadi 280 karakter pertama cukup (tanpa memecah pasangan surrogate) */
+const CARD_NOTE = 280;
+const cardNote = (d: string) => (d.length > CARD_NOTE ? d.slice(0, CARD_NOTE).replace(/[\uD800-\uDBFF]$/, "") : d);
+
+/** Isi form ubah satu tugas (popover "Ubah" memuatnya saat dibuka; halaman /dashboard/tasks/<id> tanpa JS) */
+on("GET", "/api/tasks/:id", async (c) => {
+  needUser(c);
+  const [task, allUsers] = await fetchAll([reads.task(c.params.id!), reads.userRefs()]);
+  return json({ task: found(task, "task-not-found"), users: allUsers } satisfies TaskEditResponse);
 });
 
 /** Tambah tugas. `title` boleh berisi beberapa baris (daftar ditempel): satu baris = satu tugas,

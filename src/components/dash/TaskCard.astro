@@ -7,13 +7,12 @@ import Due from "./Due.astro";
 import TaskActions from "./TaskActions.astro";
 import { PRIORITY } from "@shared/constants";
 import { isDone, isLate } from "@shared/format";
-import type { NamedRef, TaskWithRefs } from "@shared/types";
+import type { TaskWithRefs } from "@shared/types";
 
 interface Props {
   task: TaskWithRefs;
-  users: NamedRef[];
 }
-const { task: t, users } = Astro.props;
+const { task: t } = Astro.props;
 // judul & nama proyek menuju baris tugas ini di detail proyek
 const inProject = `/dashboard/projects/${t.projectId}#task-${t.id}`;
 ---
@@ -29,7 +28,7 @@ const inProject = `/dashboard/projects/${t.projectId}#task-${t.id}`;
     {t.dueDate && <Due date={t.dueDate} late={isLate(t)} class="task-due cap num" quietClass="t-2" icon />}
   </div>
   {/* kaki kartu: penanggung jawab selalu di kiri baris aksi (posisi sama di semua kartu) */}
-  <TaskActions task={t} users={users} variant="card">
+  <TaskActions task={t} variant="card" pin>
     <span slot="lead" class="tcard-who small">
       <span class="vh">Penanggung jawab: </span>
       <Person

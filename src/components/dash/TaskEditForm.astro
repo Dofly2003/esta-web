@@ -1,0 +1,88 @@
+---
+// Isi form ubah satu tugas (judul, catatan, prioritas, status, PJ, deadline) + hapus. Tidak lagi dirender untuk
+// setiap kartu/baris: popover "Ubah" di TaskActions memuatnya saat dibuka (fragmen /dashboard/tasks/<id>/form),
+// tanpa JS halaman /dashboard/tasks/<id> menampilkannya penuh. Markup = isi .pop-panel lama, jadi tampilan sama.
+//   back      → _back form simpan (URL asal + #task-<id>)
+//   deleteBack → _back form hapus (URL asal + anchor daftar)
+//   sheet     → di dalam popover: kepala lembar bawah ponsel (judul + tutup) dan Batal = reset; halaman penuh:
+//               Batal = tautan kembali
+// Hidden `version` = updatedAt: bila tugas sudah diubah di tab lain, server menolak dengan err=stale.
+import Icon from "./Icon.astro";
+import Field from "./Field.astro";
+import Options from "./Options.astro";
+import DeleteForm from "./DeleteForm.astro";
+import { MAX_LEN, PRIORITY, TASK_STATUS } from "@shared/constants";
+import type { NamedRef, TaskEditable } from "@shared/types";
+
+interface Props {
+  task: TaskEditable;
+  users: NamedRef[];
+  back: string;
+  deleteBack: string;
+  sheet?: boolean;
+}
+const { task: t, users, back, deleteBack, sheet = false } = Astro.props;
+const f = `te-${t.id}`;
+---
+
+{
+  sheet && (
+    <div class="pop-head">
+      <p class="h3 ell" aria-hidden="true">{t.title}</p>
+      <button type="button" class="btn-icon" data-pop-dismiss aria-label="Tutup" title="Tutup">
+        <Icon name="x" />
+      </button>
+    </div>
+  )
+}
+<form method="post" action={`/api/tasks/${t.id}`} class="form-stack task-form" data-guard data-keep={f}>
+  <input type="hidden" name="_back" value={back} />
+  <input type="hidden" name="version" value={t.updatedAt} />
+  <Field id={`${f}-title`} label="Judul" required>
+    <input id={`${f}-title`} name="title" value={t.title} required maxlength={MAX_LEN.taskTitle} class="input" autocomplete="off" />
+  </Field>
+  <Field id={`${f}-desc`} label="Catatan" hint="(opsional)">
+    <textarea id={`${f}-desc`} name="description" rows="2" maxlength={MAX_LEN.description} class="input">{t.description}</textarea>
+  </Field>
+  <div class="task-form-grid">
+    <Field id={`${f}-prio`} label="Prioritas">
+      <select id={`${f}-prio`} name="priority" class="input">
+        <Options from={PRIORITY} selected={t.priority} />
+      </select>
+    </Field>
+    <Field id={`${f}-status`} label="Status">
+      <select id={`${f}-status`} name="status" class="input">
+        <Options from={TASK_STATUS} selected={t.status} />
+      </select>
+    </Field>
+    <Field id={`${f}-who`} label="Penanggung jawab" class="wide">
+      <select id={`${f}-who`} name="assigneeId" class="input">
+        <option value="">Tanpa penanggung jawab</option>
+        <Options from={users} selected={t.assigneeId} />
+      </select>
+    </Field>
+    <Field id={`${f}-due`} label="Deadline" class="wide">
+      <input id={`${f}-due`} name="dueDate" type="date" value={t.dueDate ?? ""} class="input num" />
+    </Field>
+  </div>
+  <div class="pop-foot">
+    <button type="submit" class="btn">Simpan<span class="vh"> tugas {t.title}</span></button>
+    {
+      sheet ? (
+        <button type="reset" class="btn btn-quiet" data-pop-close>Batal<span class="vh"> (buang perubahan)</span></button>
+      ) : (
+        <a href={back} class="btn btn-quiet">Batal<span class="vh"> (kembali tanpa menyimpan)</span></a>
+      )
+    }
+  </div>
+</form>
+<DeleteForm
+  action={`/api/tasks/${t.id}/delete`}
+  confirm={`Hapus tugas “${t.title}”? Tindakan ini tidak bisa dibatalkan.`}
+  label="Hapus tugas"
+  srSuffix={` ${t.title}`}
+  back={deleteBack}
+  size="sm"
+  quiet
+  class="pop-sep"
+/>

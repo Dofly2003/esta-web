@@ -413,3 +413,125 @@ describe("flash, anchors and small inputs", () => {
     expect($<HTMLDetailsElement>("#edit").open).toBe(true);
   });
 });
+
+describe("event delegation: forms added after enhance()", () => {
+  it("guard, status select and Enter-submit work on forms inserted later (lazy popover content)", async () => {
+    await boot(`<div id="slot"></div>`);
+    $("#slot").innerHTML = `<form method="post" data-guard id="g"><input name="a" value="1"></form>
+      <form method="post" class="status-form" id="s"><select name="status" data-autosubmit>
+        <option value="TODO" selected>To do</option><option value="DONE">Done</option></select>
+        <button type="submit" class="status-save">Simpan</button></form>
+      <form method="post" id="e"><textarea name="t" data-enter-submit></textarea></form>`;
+    typeInto($<HTMLInputElement>("#g input"), "2");
+    expect($("#g").dataset.dirty).toBe("");
+    const s = $<HTMLFormElement>("#s");
+    const sel = $<HTMLSelectElement>("#s select");
+    const sSubmit = vi.fn();
+    s.requestSubmit = sSubmit;
+    sel.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    sel.value = "DONE";
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(sSubmit).toHaveBeenCalledTimes(1);
+    const e = $<HTMLFormElement>("#e");
+    const eSubmit = vi.fn();
+    e.requestSubmit = eSubmit;
+    const key = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    $("#e textarea").dispatchEvent(key);
+    expect(key.defaultPrevented).toBe(true);
+    expect(eSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("lazy popover (details.pop[data-lazy])", () => {
+  const html = (row = "task-1") => `
+    <div id="${row}" data-row><details class="pop" data-lazy="te-1" id="p">
+      <summary id="s">Ubah</summary>
+      <div class="pop-panel"><a href="/dashboard/tasks/1?back=/dashboard/tasks%23task-1">Buka form ubah tugas</a></div>
+    </details></div>`;
+  const fragment = `<form method="post" action="/api/tasks/1" data-guard data-keep="te-1">
+    <input name="title" value="Judul lama"><button type="reset" data-pop-close>Batal</button></form>`;
+  const htmlRes = (body: string, init: ResponseInit = {}) =>
+    new Response(body, { status: 200, headers: { "content-type": "text/html; charset=utf-8" }, ...init });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("click on the summary fetches <link>/form once, fills the panel, then opens", async () => {
+    const fetchMock = vi.fn(async () => htmlRes(fragment));
+    vi.stubGlobal("fetch", fetchMock);
+    await boot(html(), "/dashboard/tasks");
+    const d = $<HTMLDetailsElement>("#p");
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    $("#s").dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    await tick(20);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
+    expect(url.pathname).toBe("/dashboard/tasks/1/form");
+    expect(url.searchParams.get("back")).toBe("/dashboard/tasks#task-1");
+    expect(d.hasAttribute("data-lazy")).toBe(false);
+    expect(d.open).toBe(true);
+    expect(d.querySelector(".pop-panel form[data-keep=te-1]")).not.toBe(null);
+    // loaded content behaves like any popover form (delegated guard)
+    typeInto($<HTMLInputElement>("[name=title]"), "baru");
+    expect($("form").dataset.dirty).toBe("");
+    // hover prefetch on an already-loaded popover does not fetch again
+    $("#s").dispatchEvent(new Event("pointerover", { bubbles: true }));
+    await tick();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("pointerover prefetches; concurrent loads share one request", async () => {
+    const fetchMock = vi.fn(async () => htmlRes(fragment));
+    vi.stubGlobal("fetch", fetchMock);
+    await boot(html(), "/dashboard/tasks");
+    const { loadPop } = await import("../../src/components/dash/forms");
+    $("#s").dispatchEvent(new Event("pointerover", { bubbles: true }));
+    const again = loadPop($<HTMLDetailsElement>("#p"));
+    expect(await again).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect($<HTMLDetailsElement>("#p").open).toBe(false); // prefetch never opens
+  });
+
+  it("redirect (session expired), non-HTML or network error → false, panel keeps the fallback link", async () => {
+    for (const res of [
+      () => Object.defineProperty(htmlRes("<p>login</p>"), "redirected", { value: true }),
+      () => new Response("{}", { headers: { "content-type": "application/json" } }),
+      () => htmlRes("", { status: 404 }),
+      () => Promise.reject(new TypeError("offline")),
+    ]) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => res()),
+      );
+      await boot(html(), "/dashboard/tasks");
+      const { loadPop } = await import("../../src/components/dash/forms");
+      const d = $<HTMLDetailsElement>("#p");
+      expect(await loadPop(d)).toBe(false);
+      expect(d.hasAttribute("data-lazy")).toBe(true);
+      expect(d.hasAttribute("aria-busy")).toBe(false);
+      expect(d.querySelector(".pop-panel a")?.textContent).toBe("Buka form ubah tugas");
+    }
+  });
+
+  it("?err= with #task-<id>: the lazy form is loaded first, then the snapshot is restored into it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => htmlRes(fragment)),
+    );
+    sessionStorage.setItem(
+      "esta-form-last",
+      JSON.stringify({
+        path: "/dashboard/tasks",
+        key: "te-1",
+        at: Date.now(),
+        values: [["title", "Isian saya", true]],
+      }),
+    );
+    await boot(html(), "/dashboard/tasks?err=stale#task-1");
+    await tick(30);
+    const input = document.querySelector<HTMLInputElement>("[name=title]");
+    expect(input?.value).toBe("Isian saya");
+    expect($<HTMLDetailsElement>("#p").open).toBe(true);
+  });
+});

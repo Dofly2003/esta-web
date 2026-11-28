@@ -40,3 +40,21 @@ export const coverBg = (color: string) => `linear-gradient(140deg, ${color} 0%, 
 /** Pilihan penanggung jawab dengan beban kerja: "Budi Santoso · 2 terbuka" (tugas hidup, dari `load` API) */
 export const withLoad = (users: { id: string; name: string }[], load: Record<string, number>) =>
   users.map((u) => ({ id: u.id, name: `${u.name} · ${load[u.id] ?? 0} terbuka` }));
+
+/** Nilai query apa adanya kecuali karakter yang memutus query (lebih pendek dari encodeURIComponent untuk path) */
+const qv = (v: string) => v.replace(/[%&#+\s]/g, encodeURIComponent);
+/** Halaman form ubah tugas (tanpa JS; dengan JS forms.ts memuat fragmennya: href yang sama + "/form").
+ * back = _back simpan (URL asal + #task-<id>); afterDelete = anchor tujuan setelah dihapus */
+export const editTaskHref = (id: string, back: string, afterDelete?: string) =>
+  `/dashboard/tasks/${encodeURIComponent(id)}?back=${qv(back)}${afterDelete ? `&del=${qv(afterDelete)}` : ""}`;
+
+/** Kebalikan editTaskHref (halaman & fragmen form): hanya path /dashboard…; selain itu kembali ke papan Tugas */
+export function editTaskBacks(sp: URLSearchParams, id: string) {
+  const raw = sp.get("back");
+  const back =
+    raw && /^\/dashboard(?:[/?#]|$)/.test(raw) && !raw.includes("\\") && !raw.startsWith("//")
+      ? raw
+      : `/dashboard/tasks#task-${id}`;
+  const del = /^[\w-]{1,64}$/.test(sp.get("del") ?? "") ? sp.get("del") : "";
+  return { back, deleteBack: back.split("#")[0] + (del ? `#${del}` : "") };
+}

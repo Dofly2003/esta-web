@@ -24,8 +24,9 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
     try {
       ctx.locals.user = await api<User>(ctx, "/api/me");
       // badge Inbox di sidebar (Dash.astro): dimulai sekarang, berjalan bersamaan dengan data halaman.
-      // Pratinjau karya tidak memakai Dash. .catch kosong: penolakan tidak "unhandled" bila halaman redirect dulu.
-      if (!pathname.endsWith("/pratinjau")) {
+      // Pratinjau karya & fragmen form tugas tidak memakai Dash. .catch kosong: penolakan tidak "unhandled" bila
+      // halaman redirect dulu.
+      if (!pathname.endsWith("/pratinjau") && !pathname.endsWith("/form")) {
         const nav = api<NavSummary>(ctx, "/api/nav");
         nav.catch(() => {});
         ctx.locals.nav = nav;

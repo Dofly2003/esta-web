@@ -29,6 +29,14 @@
 //   textarea[data-enter-submit] Enter = kirim, Shift+Enter = baris baru
 //   [autofocus]               difokus ulang setelah browser menggulir ke #anchor
 //   a[href^="#"] ke <details> tertutup → dibuka (mis. "Ubah" status proyek → #edit)
+//   details.pop[data-lazy="kunci"] isi panel dimuat saat dibuka (form edit tugas): panel berisi tautan cadangan
+//                             (tanpa JS = halaman form penuh); dengan JS isi diambil dari <href tautan>/form
+//                             (fragmen HTML same-origin, tanpa skrip) lalu popover dibuka. Gagal / sesi berakhir →
+//                             pindah ke halaman form penuh. Form berkunci itu dimuat dulu bila perlu dipulihkan
+//                             (?err=, draf sesi berakhir).
+//
+// Listener didelegasikan ke document (fase capture: juga menangkap event yang tidak bubble, mis. toggle, reset),
+// jadi form yang dimuat belakangan langsung ikut, tanpa pemindaian ulang DOM per scroll / klik.
 
 const KEEP_KEY = "esta-form-last";
 /** isian yang menunggu login ulang (sesi berakhir saat mengirim) */
@@ -122,29 +130,49 @@ function focusLater(el: HTMLElement | null | undefined, center = true) {
 }
 
 /* ---------------- status select ---------------- */
+const autoSel = (t: EventTarget | null) =>
+  t instanceof HTMLSelectElement && t.form && t.hasAttribute("data-autosubmit") ? t : null;
+/** Nilai sebelum diubah pengguna: dicatat saat pertama disentuh / difokus, selain itu opsi bawaan dari server */
+function initialOf(sel: HTMLSelectElement) {
+  return sel.dataset.initial ?? (Array.from(sel.options).find((o) => o.defaultSelected) ?? sel.options[0])?.value ?? "";
+}
 function statusSelects() {
-  for (const sel of $$<HTMLSelectElement>("select[data-autosubmit]")) {
-    const form = sel.form;
-    if (!form) continue;
-    const initial = sel.value;
-    sel.dataset.initial = initial;
-    const save = form.querySelector<HTMLElement>(".status-save");
-    let pointer = false;
-    sel.addEventListener("pointerdown", () => (pointer = true));
-    sel.addEventListener("keydown", (e) => {
-      pointer = false;
-      if (e.key === "Enter" && sel.value !== initial) {
+  let pointer: HTMLSelectElement | null = null;
+  const remember = (sel: HTMLSelectElement | null) => sel && (sel.dataset.initial ??= sel.value);
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      pointer = autoSel(e.target);
+      remember(pointer);
+    },
+    true,
+  );
+  document.addEventListener("focusin", (e) => remember(autoSel(e.target)), true);
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      const sel = autoSel(e.target);
+      if (!sel) return;
+      pointer = null;
+      if (e.key === "Enter" && sel.value !== initialOf(sel)) {
         e.preventDefault();
-        form.requestSubmit();
+        sel.form!.requestSubmit();
       }
-    });
-    sel.addEventListener("change", () => {
-      const dirty = sel.value !== initial;
-      save?.classList.toggle("is-dirty", dirty);
-      if (pointer && dirty) form.requestSubmit();
-      pointer = false;
-    });
-  }
+    },
+    true,
+  );
+  document.addEventListener(
+    "change",
+    (e) => {
+      const sel = autoSel(e.target);
+      if (!sel) return;
+      const dirty = sel.value !== initialOf(sel);
+      sel.form!.querySelector<HTMLElement>(".status-save")?.classList.toggle("is-dirty", dirty);
+      if (pointer === sel && dirty) sel.form!.requestSubmit();
+      pointer = null;
+    },
+    true,
+  );
 }
 
 /* ---------------- pending state ---------------- */
@@ -340,28 +368,43 @@ function restore(err: string | null, ok: string | null) {
 
 /* ---------------- perubahan belum disimpan ---------------- */
 function guard() {
-  for (const form of $$<HTMLFormElement>("form[data-guard], form.status-form")) {
-    const mark = () => {
-      // form status: kembali ke nilai awal = tidak ada perubahan
-      const sel = form.classList.contains("status-form")
-        ? form.querySelector<HTMLSelectElement>("select[data-autosubmit]")
-        : null;
-      if (sel && sel.value === sel.dataset.initial) delete form.dataset.dirty;
-      else form.dataset.dirty = "";
-    };
-    form.addEventListener("input", mark);
-    form.addEventListener("change", mark);
-    form.addEventListener("submit", (e) => {
-      if (!e.defaultPrevented) delete form.dataset.dirty;
-    });
-    form.addEventListener("reset", () => {
+  const formOf = (t: EventTarget | null) => {
+    const f = t instanceof Element ? t.closest("form") : null;
+    return f?.matches("form[data-guard], form.status-form") ? f : null;
+  };
+  const mark = (e: Event) => {
+    const form = formOf(e.target);
+    if (!form) return;
+    // form status: kembali ke nilai awal = tidak ada perubahan
+    const sel = form.classList.contains("status-form")
+      ? form.querySelector<HTMLSelectElement>("select[data-autosubmit]")
+      : null;
+    if (sel && sel.value === initialOf(sel)) delete form.dataset.dirty;
+    else form.dataset.dirty = "";
+  };
+  document.addEventListener("input", mark, true);
+  document.addEventListener("change", mark, true);
+  document.addEventListener(
+    "submit",
+    (e) => {
+      const form = formOf(e.target);
+      if (form && !e.defaultPrevented) delete form.dataset.dirty;
+    },
+    true,
+  );
+  document.addEventListener(
+    "reset",
+    (e) => {
+      const form = formOf(e.target);
+      if (!form) return;
       delete form.dataset.dirty;
       const pop = form.closest<HTMLDetailsElement>("details.pop");
       if (pop) setUnsaved(pop, false);
       // setelah reset, beri tahu pratinjau dsb. (nilai sudah kembali ke awal)
       setTimeout(() => form.dispatchEvent(new Event("restored")), 0);
-    });
-  }
+    },
+    true,
+  );
   window.addEventListener("beforeunload", (e) => {
     if (!document.querySelector("form[data-guard][data-dirty], form.status-form[data-dirty]")) return;
     e.preventDefault();
@@ -388,8 +431,55 @@ function setUnsaved(d: HTMLDetailsElement, on: boolean) {
   }
 }
 
+/* ---- popover lazy: isi panel dimuat saat dibuka ---- */
+const loading = new WeakMap<HTMLDetailsElement, Promise<boolean>>();
+/** Tautan cadangan di panel popover lazy (tanpa JS: halaman form penuh) */
+const lazyLink = (d: HTMLDetailsElement) => d.querySelector<HTMLAnchorElement>(":scope > .pop-panel a[href]");
+/** Ambil isi panel (fragmen HTML di <href tautan>/form) sekali; true = isi sudah ada. Redirect (sesi berakhir →
+ * /login), bukan HTML, atau gagal jaringan = false (pemanggil pindah ke halaman form penuh). */
+export function loadPop(d: HTMLDetailsElement): Promise<boolean> {
+  if (!d.hasAttribute("data-lazy")) return Promise.resolve(true);
+  const cached = loading.get(d);
+  if (cached) return cached;
+  const link = lazyLink(d);
+  const panel = link?.parentElement?.closest<HTMLElement>(".pop-panel");
+  if (!link || !panel) return Promise.resolve(false);
+  const url = new URL(link.href, location.href);
+  if (url.origin !== location.origin) return Promise.resolve(false);
+  url.pathname += "/form";
+  d.setAttribute("aria-busy", "true");
+  const p = fetch(url, { headers: { Accept: "text/html" }, credentials: "same-origin" })
+    .then(async (res) => {
+      if (!res.ok || res.redirected || !(res.headers.get("content-type") ?? "").includes("text/html")) return false;
+      panel.innerHTML = await res.text();
+      d.removeAttribute("data-lazy");
+      return true;
+    })
+    .catch(() => false)
+    .then((ok) => {
+      d.removeAttribute("aria-busy");
+      if (!ok) loading.delete(d);
+      return ok;
+    });
+  loading.set(d, p);
+  return p;
+}
+/** Buka popover lazy setelah isinya ada; gagal → halaman form penuh (yang juga menangani login ulang) */
+function openLazy(d: HTMLDetailsElement) {
+  const href = lazyLink(d)?.href;
+  void loadPop(d).then((ok) => {
+    if (ok) d.open = true;
+    else if (href) location.assign(href);
+  });
+}
+const lazyOf = (key: string) =>
+  key ? document.querySelector<HTMLDetailsElement>(`details.pop[data-lazy="${CSS.escape(key)}"]`) : null;
+
 function popovers() {
-  const pops = () => $$<HTMLDetailsElement>("details.pop");
+  /** popover yang sedang terbuka (0 atau 1): listener gulir / klik langsung selesai bila kosong */
+  const opened = new Set<HTMLDetailsElement>();
+  // kunci gulir halaman saat lembar bawah terbuka (dulu :has(.pop[open]) di <html>)
+  const sync = () => document.documentElement.classList.toggle("pop-open", opened.size > 0);
   const panelOf = (d: HTMLDetailsElement) => d.querySelector<HTMLElement>(":scope > .pop-panel");
   const reset = (d: HTMLDetailsElement) => {
     d.classList.remove("is-up", "is-left");
@@ -400,6 +490,8 @@ function popovers() {
   const close = (d: HTMLDetailsElement, focus: boolean) => {
     if (!d.open) return;
     d.open = false;
+    opened.delete(d);
+    sync();
     reset(d);
     // Esc / klik di luar: perubahan tidak dibuang, tapi ditandai (tidak ada status "kotor" yang tak terlihat)
     setUnsaved(d, !!d.querySelector("form[data-dirty]"));
@@ -447,34 +539,72 @@ function popovers() {
     }
     if (panel.getBoundingClientRect().left < EDGE) d.classList.add("is-left");
   };
-  for (const d of pops()) {
-    d.addEventListener("toggle", () => {
-      if (!d.open) return reset(d);
-      for (const o of pops()) if (o !== d && o.open) close(o, false);
+  const popOf = (t: EventTarget | null) => (t instanceof HTMLDetailsElement && t.matches("details.pop") ? t : null);
+  // toggle tidak bubble: ditangkap di fase capture
+  document.addEventListener(
+    "toggle",
+    (e) => {
+      const d = popOf(e.target);
+      if (!d) return;
+      if (!d.open) {
+        opened.delete(d);
+        sync();
+        return reset(d);
+      }
+      // terbuka sebelum isinya ada (mis. lewat tautan #id): tutup lagi, muat, lalu buka
+      if (d.hasAttribute("data-lazy")) {
+        d.open = false;
+        return openLazy(d);
+      }
+      for (const o of opened) if (o !== d) close(o, false);
+      opened.add(d);
+      sync();
       place(d);
       if (matchMedia("(pointer: fine)").matches)
         d.querySelector<HTMLElement>(
           ".pop-panel input:not([type=hidden]), .pop-panel select, .pop-panel textarea",
         )?.focus({ preventScroll: true });
-    });
-    // Batal: buang perubahan (form.reset() → nilai awal, data-dirty hilang) lalu tutup
-    // tutup (x) di kepala lembar bawah: seperti Esc (isian tetap, ditandai bila berubah)
-    for (const b of $$<HTMLButtonElement>("[data-pop-dismiss]", d)) b.addEventListener("click", () => close(d, true));
-    for (const b of $$<HTMLButtonElement>("[data-pop-close]", d)) {
-      b.addEventListener("click", () => {
-        const form = b.closest("form");
-        if (form && b.type !== "reset") form.reset();
-        setTimeout(() => {
-          setUnsaved(d, false);
-          close(d, true);
-          setUnsaved(d, false);
-        }, 0);
-      });
+    },
+    true,
+  );
+  const lazySummary = (t: EventTarget | null) => {
+    const d = (t instanceof Element ? t.closest("summary") : null)?.parentElement;
+    return d instanceof HTMLDetailsElement && d.hasAttribute("data-lazy") && d.matches("details.pop") ? d : null;
+  };
+  // niat membuka (kursor di atas tombol Ubah): isinya diambil lebih awal
+  document.addEventListener(
+    "pointerover",
+    (e) => {
+      const d = lazySummary(e.target);
+      if (d) void loadPop(d);
+    },
+    { passive: true },
+  );
+  document.addEventListener("click", (e) => {
+    const t = e.target as Element | null;
+    // summary popover lazy: jangan buka panel cadangan; buka setelah isinya dimuat
+    const lazy = lazySummary(t);
+    if (lazy && !lazy.open) {
+      e.preventDefault();
+      return openLazy(lazy);
     }
-  }
+    const b = t?.closest?.<HTMLButtonElement>("[data-pop-dismiss], [data-pop-close]");
+    const d = b?.closest<HTMLDetailsElement>("details.pop");
+    if (!b || !d) return;
+    // tutup (x) di kepala lembar bawah: seperti Esc (isian tetap, ditandai bila berubah)
+    if (b.hasAttribute("data-pop-dismiss")) return close(d, true);
+    // Batal: buang perubahan (form.reset() → nilai awal, data-dirty hilang) lalu tutup
+    const form = b.closest("form");
+    if (form && b.type !== "reset") form.reset();
+    setTimeout(() => {
+      setUnsaved(d, false);
+      close(d, true);
+      setUnsaved(d, false);
+    }, 0);
+  });
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    const open = pops().find((d) => d.open);
+    if (e.key !== "Escape" || !opened.size) return;
+    const open = [...opened].find((d) => d.open);
     if (open) {
       e.preventDefault();
       close(open, true);
@@ -482,22 +612,18 @@ function popovers() {
   });
   // klik di luar; klik pada latar redup lembar bawah (::before milik <details>) mengenai <details> itu sendiri
   document.addEventListener("pointerdown", (e) => {
-    for (const d of pops()) if (d.open && (!d.contains(e.target as Node) || e.target === d)) close(d, false);
+    if (!opened.size) return;
+    for (const d of opened) if (d.open && (!d.contains(e.target as Node) || e.target === d)) close(d, false);
   });
   // popover fixed (di dalam papan yang digulir) mengikuti pemicunya
-  const follow = () => {
-    for (const d of pops()) if (d.open && panelOf(d)?.style.position === "fixed") place(d, true);
+  const follow = (e?: Event) => {
+    if (!opened.size) return;
+    // gulir di dalam panel sendiri tidak memindahkan panel
+    if (e?.target instanceof Element && e.target.closest(".pop-panel")) return;
+    for (const d of opened) if (d.open && panelOf(d)?.style.position === "fixed") place(d, true);
   };
-  addEventListener("resize", follow, { passive: true });
-  addEventListener(
-    "scroll",
-    (e) => {
-      // gulir di dalam panel sendiri tidak memindahkan panel
-      if (e.target instanceof Element && e.target.closest(".pop-panel")) return;
-      follow();
-    },
-    { passive: true, capture: true },
-  );
+  addEventListener("resize", () => follow(), { passive: true });
+  addEventListener("scroll", follow, { passive: true, capture: true });
 }
 
 /* ---------------- filter bersegmen yang digulir ---------------- */
@@ -530,7 +656,10 @@ function flash() {
   if (!wrap) return;
   const drop = (el: Element | null) => {
     el?.remove();
-    if (!wrap.querySelector(".flash")) wrap.remove();
+    if (wrap.querySelector(".flash")) return;
+    wrap.remove();
+    // ruang gulir #anchor untuk pesan (html.has-flash dari Dash.astro) tidak diperlukan lagi
+    document.documentElement.classList.remove("has-flash");
   };
   // tutup: tanpa JS kotak centang + CSS :has() menyembunyikannya (halaman tidak dimuat ulang, #anchor tetap)
   for (const c of $$<HTMLElement>("[data-flash-close]", wrap)) {
@@ -572,6 +701,8 @@ function anchors(restored: HTMLFormElement | null, ok: string | null, err: strin
       if (auto && document.activeElement !== auto) focusLater(auto, false);
     }
   }
+}
+function hashLinks() {
   document.addEventListener("click", (e) => {
     const a = (e.target as Element | null)?.closest<HTMLAnchorElement>('a[href^="#"]');
     if (!a) return;
@@ -625,13 +756,32 @@ function dateMins() {
 
 /* ---------------- textarea satu baris: Enter = kirim ---------------- */
 function enterSubmit() {
-  for (const ta of $$<HTMLTextAreaElement>("textarea[data-enter-submit]")) {
-    ta.addEventListener("keydown", (e) => {
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      const ta = e.target;
+      if (!(ta instanceof HTMLTextAreaElement) || !ta.hasAttribute("data-enter-submit")) return;
       if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
       e.preventDefault();
       ta.form?.requestSubmit();
-    });
-  }
+    },
+    true,
+  );
+}
+
+/** Popover lazy berisi form yang akan dipulihkan restore() (draf sesi berakhir / ?err=): dimuat dulu */
+function lazyForRestore(err: string | null) {
+  if (location.pathname === "/login") return null;
+  const draft = readStore(DRAFT_KEY);
+  if (draft?.at && Date.now() - draft.at <= DRAFT_TTL && draft.path === location.pathname && !formByKey(draft.key))
+    return lazyOf(draft.key);
+  if (!err) return null;
+  const snap = readStore();
+  const fromSnap = snap && snap.path === location.pathname && !formByKey(snap.key) ? lazyOf(snap.key) : null;
+  if (fromSnap) return fromSnap;
+  const hashEl = location.hash ? document.getElementById(hashId()) : null;
+  if (!hashEl || hashEl instanceof HTMLFormElement || hashEl.querySelector("form[data-keep]")) return null;
+  return hashEl.querySelector<HTMLDetailsElement>("details.pop[data-lazy]");
 }
 
 let done = false;
@@ -650,6 +800,13 @@ export function enhance() {
   rupiah();
   dateMins();
   enterSubmit();
+  hashLinks();
+  const lazy = lazyForRestore(err);
+  if (lazy) {
+    flash();
+    void loadPop(lazy).then(() => anchors(restore(err, ok), ok, err));
+    return;
+  }
   const restored = restore(err, ok);
   flash();
   anchors(restored, ok, err);

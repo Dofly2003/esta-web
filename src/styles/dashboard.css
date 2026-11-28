@@ -22,7 +22,7 @@
    1024px (form proyek 4 kolom, baris tambah tugas), 1200px (kolom bertumpuk).
 
    Bagian:
-   1. Token (tanpa layer, agar menang atas aturan dasar global.css) + cadangan
+   1. Token (tanpa layer, agar menang atas aturan dasar tokens.css) + cadangan
       light-dark() + kontras tinggi
    2. Base dashboard (tanpa layer)
    3. Komponen (@layer components — utilitas Tailwind tetap bisa menimpa)
@@ -353,8 +353,10 @@ html[data-dash] :is(a, button, summary, select, label) {
 html[data-dash].drawer-open {
   overflow: hidden;
 }
-/* ada flash (sticky di bawah top bar): lompatan #id menyisakan ruang untuk pesannya */
-html[data-dash]:has(.flash-wrap) {
+/* ada flash (sticky di bawah top bar): lompatan #id menyisakan ruang untuk pesannya. Kelas dari Dash.astro
+   (server, juga tanpa JS), dilepas forms.ts saat pesannya ditutup; bukan :has() di <html> (setiap perubahan DOM
+   memaksa cek ulang dari akar) */
+html[data-dash].has-flash {
   scroll-padding-top: calc(var(--top-h) + var(--s-16) + var(--s-4));
 }
 html[data-dash] ::selection {
@@ -368,7 +370,7 @@ html[data-dash] textarea {
 html[data-dash] button:disabled {
   cursor: not-allowed;
 }
-/* global.css (tanpa layer) memberi p/li `text-wrap: pretty`, yang juga mengatur text-wrap-mode dan menang atas
+/* tokens.css (tanpa layer) memberi p/li `text-wrap: pretty`, yang juga mengatur text-wrap-mode dan menang atas
    .ell di @layer utilities: elipsis satu baris harus ditegaskan di sini (tanpa layer) */
 html[data-dash] :is(.ell, .me-name, .stat-label) {
   white-space: nowrap;
@@ -2049,6 +2051,19 @@ html[data-dash] :is(.ell, .me-name, .stat-label) {
     grid-column: 1 / -1;
   }
 
+  /* navigasi halaman (Pager.astro: Inbox, satu kolom papan Tugas) */
+  [data-dash] .pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+    margin-top: var(--s-4);
+  }
+  [data-dash] .pager-cur {
+    font-weight: var(--fw-semibold);
+    pointer-events: none;
+  }
+
   /* papan kanban (/dashboard/tasks): .board > section.panel.tcol > .tcol-head + ul.tcol-body > TaskCard */
   [data-dash] .board {
     position: relative;
@@ -2549,7 +2564,8 @@ html[data-dash] :is(.ell, .me-name, .stat-label) {
       z-index: calc(var(--z-pop) - 1);
       background: var(--backdrop);
     }
-    [data-dash].js:has(.pop[open]) {
+    /* html.pop-open diset forms.ts selama popover terbuka (bukan :has() di akar) */
+    [data-dash].pop-open {
       overflow: hidden;
     }
     /* lembar & latarnya harus di atas top bar: kartu tidak membuat konteks tumpuk sendiri */
@@ -2676,7 +2692,7 @@ html[data-dash] :is(.ell, .me-name, .stat-label) {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* kode / ID monospace (slug, warna, Discord ID). .mono publik (global.css) = label uppercase.
+  /* kode / ID monospace (slug, warna, Discord ID). .mono publik (site.css) = label uppercase.
      Pada .input ukuran huruf tetap milik kontrol (14px / 13px untuk .input-sm). */
   [data-dash] .code {
     font-family: var(--font-mono);

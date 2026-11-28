@@ -1,6 +1,7 @@
 ---
 // Shell dashboard tim: sidebar (brand, navigasi, tema, akun) + top bar
 // (breadcrumb + slot "actions") + area konten. Sistem desain: src/styles/dashboard.css
+import "../styles/dash.css";
 import Base from "./Base.astro";
 import Brand from "../components/dash/Brand.astro";
 import Notice from "../components/dash/Notice.astro";
@@ -71,7 +72,7 @@ const themes = [
 ];
 ---
 
-<Base title={title} dash>
+<Base title={title} dash rootClass={flashes.length > 0 ? "has-flash" : undefined}>
   <ThemeScript slot="head" />
 
   <a class="skip" href="#main">Langsung ke konten</a>

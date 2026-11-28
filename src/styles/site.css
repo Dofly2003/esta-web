@@ -1,88 +1,41 @@
-@import "tailwindcss";
-/* sistem desain dashboard tim — semua aturannya di-scope ke html[data-dash] */
-@import "./dashboard.css";
-
 /* ============================================================
+   CSS website publik (halaman yang memakai layouts/Site.astro, termasuk pratinjau karya dashboard).
+   Dashboard & login memakai dash.css: kedua permukaan hanya memuat aturannya sendiri.
+   Tailwind hanya memindai berkas website publik (source(none) + @source), jadi utilitas khusus dashboard
+   tidak ikut di sini.
+
    ESTA design system
    Palet diambil dari identitas ESTA: navy malam + gradasi titik
    sky → azure → indigo → violet. Tipografi: Geist (teks), Geist Mono
    (label teknis), Geist Pixel Square/Circle (pixel & dot-matrix — gema dari titik logo ESTA).
    ============================================================ */
-/* Geist Pixel (Vercel, SIL OFL 1.1) — lisensi: public/fonts/GeistPixel-LICENSE.txt */
+@import "tailwindcss" source(none);
+@import "./tokens.css";
+@source "../layouts/Site.astro";
+@source "../layouts/Base.astro";
+@source "../pages/index.astro";
+@source "../pages/contact.astro";
+@source "../pages/404.astro";
+@source "../pages/portfolio";
+@source "../pages/dashboard/portfolio/*/pratinjau.astro";
+@source "../components/*.astro";
+@source "../scripts";
+@source "../lib";
+@source "../../shared";
+
+/* Geist Pixel (Vercel, SIL OFL 1.1) — lisensi: public/fonts/GeistPixel-LICENSE.txt. Nama file di-hash saat build. */
 @font-face {
   font-family: "Geist Pixel Square";
-  src: url("/fonts/GeistPixel-Square.woff2") format("woff2");
+  src: url("../assets/fonts/GeistPixel-Square.woff2") format("woff2");
   font-display: swap;
 }
 @font-face {
   font-family: "Geist Pixel Circle";
-  src: url("/fonts/GeistPixel-Circle.woff2") format("woff2");
+  src: url("../assets/fonts/GeistPixel-Circle.woff2") format("woff2");
   font-display: swap;
 }
 
-@theme {
-  --color-ink: #0b0f2a;
-  --color-ink-2: #10153a;
-  --color-ink-3: #182052;
-  --color-sky: #5ec8f2;
-  --color-azure: #4f86e0;
-  --color-indigo: #5a5fd8;
-  --color-violet: #6b4fc8;
-  --color-lavender: #a3aee8;
-  --color-paper: #f3f5ff;
-
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-pixel: "Geist Pixel Square", "Geist Mono", monospace;
-  --font-dot: "Geist Pixel Circle", "Geist Mono", monospace;
-}
-
-html {
-  background: var(--color-ink);
-}
-
-body {
-  -webkit-font-smoothing: antialiased;
-}
-
-button,
-summary,
-select {
-  cursor: pointer;
-}
-
-/* hindari satu kata yatim di baris terakhir paragraf */
-p,
-li,
-dd {
-  text-wrap: pretty;
-}
-
-/* fokus keyboard yang selalu terlihat di latar gelap maupun terang */
-:focus-visible {
-  outline: 2px solid var(--color-sky);
-  outline-offset: 3px;
-}
-
-/* sentuhan: tanpa jeda double-tap zoom, sorotan ketuk diganti state hover/fokus */
-a,
-button,
-summary,
-label,
-select {
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-
-::selection {
-  background: var(--color-sky);
-  color: var(--color-ink);
-}
-
-/* ---------- dashboard ----------
-   Kelas btn / btn-primary / btn-danger / input / panel / badge / ...
-   didefinisikan di dashboard.css, di-scope ke <html data-dash>.
-   input-dark tetap di sini: dipakai form kontak publik (ContactForm.astro). */
+/* ---------- form kontak publik (ContactForm.astro) ---------- */
 @utility input-dark {
   @apply w-full border border-white/12 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/45 focus:border-sky focus:bg-white/[0.06];
 }
@@ -239,9 +192,12 @@ select.input-dark {
 .js:not(.motion-fallback) [data-hl-line] {
   clip-path: inset(0 100% 0 0);
 }
+/* visibility: sama dengan autoAlpha 0 GSAP (tautan yang belum muncul tidak bisa difokus); motion.ts tidak
+   merender status awal ini lagi saat membuat tween (immediateRender: false) */
 .js:not(.motion-fallback) [data-fade],
 .js:not(.motion-fallback) [data-stagger] > * {
   opacity: 0;
+  visibility: hidden;
 }
 @media (prefers-reduced-motion: reduce) {
   .js [data-hl-line] {
@@ -250,6 +206,7 @@ select.input-dark {
   .js [data-fade],
   .js [data-stagger] > * {
     opacity: 1 !important;
+    visibility: inherit !important;
   }
 }
 

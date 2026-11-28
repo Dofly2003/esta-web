@@ -682,6 +682,12 @@ export const reads = {
     args: { limit },
     read: mapRows(toTaskBrief),
   }),
+  /** Satu tugas, kolom form ubah (GET /api/tasks/:id) */
+  task: (id: string): Query<TaskEditable | null> => ({
+    sql: `SELECT ${TASK_EDIT_COLS} FROM tasks t WHERE t.id = $id`,
+    args: { id },
+    read: firstOf(toTaskEditable),
+  }),
   projectTasks: (projectId: string): Query<TaskEditable[]> => ({
     sql: `SELECT ${TASK_EDIT_COLS} FROM tasks t WHERE t.project_id = $projectId ${TASK_ORDER_T}`,
     args: { projectId },

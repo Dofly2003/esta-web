@@ -188,7 +188,7 @@ const doneNoPortfolio = project.status === "DONE" && portfolio.length === 0;
                 {list.length > 0 && (
                   <ul class="rows">
                     {list.map((t) => (
-                      <TaskRow task={t} users={users} afterDelete="tugas" />
+                      <TaskRow task={t} afterDelete="tugas" />
                     ))}
                   </ul>
                 )}

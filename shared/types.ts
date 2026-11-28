@@ -234,6 +234,15 @@ export type TasksResponse = {
   load: Record<string, number>;
   /** proyek berjalan untuk form tambah tugas (urutan sama dengan daftar proyek "Berjalan") */
   projectOptions: NamedRef[];
+  /** jumlah tugas per status dalam daftar ini SEBELUM dipotong (board=1 / col=) */
+  statusCounts: Record<string, number>;
+  /** hanya dengan col=<status>: halaman tampilan satu kolom */
+  colPage?: { page: number; pages: number; total: number };
+};
+/** GET /api/tasks/:id — isi form ubah satu tugas (dimuat saat popover "Ubah" dibuka) */
+export type TaskEditResponse = {
+  task: TaskEditable;
+  users: NamedRef[];
 };
 /** GET /api/portfolio/:id ("new" → item null) */
 export type PortfolioEditResponse = {

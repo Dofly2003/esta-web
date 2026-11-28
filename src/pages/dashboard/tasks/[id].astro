@@ -1,0 +1,29 @@
+---
+// Form ubah satu tugas sebagai halaman penuh: tautan cadangan popover "Ubah" (TaskActions) tanpa JS, atau bila
+// fragmen gagal dimuat. ?back= / ?del= = URL asal (lihat editTaskHref di ui.ts); simpan kembali ke sana.
+import Dash from "../../../layouts/Dash.astro";
+import PageHeader from "../../../components/dash/PageHeader.astro";
+import TaskEditForm from "../../../components/dash/TaskEditForm.astro";
+import { editTaskBacks } from "../../../components/dash/ui";
+import { apiOrNull, withFlash } from "../../../lib/api";
+import type { TaskEditResponse } from "@shared/types";
+
+const id = Astro.params.id!;
+const data = await apiOrNull<TaskEditResponse>(Astro, `/api/tasks/${encodeURIComponent(id)}`);
+if (!data) return Astro.redirect(withFlash("/dashboard/tasks", { err: "task-not-found" }));
+const { task, users } = data;
+const { back, deleteBack } = editTaskBacks(Astro.url.searchParams, task.id);
+---
+
+<Dash title={`Ubah tugas: ${task.title}`} trail={[{ label: "Ubah tugas" }]}>
+  <PageHeader title="Ubah tugas" subtitle={task.title} />
+  <section class="panel pad task-page" aria-label={`Ubah tugas: ${task.title}`}>
+    <TaskEditForm task={task} users={users} back={back} deleteBack={deleteBack} />
+  </section>
+</Dash>
+
+<style>
+  .task-page {
+    max-width: 36rem;
+  }
+</style>

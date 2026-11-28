@@ -7,15 +7,14 @@ import Due from "./Due.astro";
 import TaskActions from "./TaskActions.astro";
 import { PRIORITY } from "@shared/constants";
 import { isDone, isLate } from "@shared/format";
-import type { NamedRef, ProjectTask } from "@shared/types";
+import type { ProjectTask } from "@shared/types";
 
 interface Props {
   task: ProjectTask;
-  users: NamedRef[];
   /** anchor tujuan setelah tugas dihapus */
   afterDelete?: string;
 }
-const { task: t, users, afterDelete } = Astro.props;
+const { task: t, afterDelete } = Astro.props;
 ---
 
 <li class="task" id={`task-${t.id}`} data-row tabindex="-1">
@@ -36,5 +35,5 @@ const { task: t, users, afterDelete } = Astro.props;
     </span>
     <Due date={t.dueDate} late={isLate(t)} class="task-due num small" quietClass="t-2" icon blank />
   </div>
-  <TaskActions task={t} users={users} variant="row" afterDelete={afterDelete} />
+  <TaskActions task={t} variant="row" afterDelete={afterDelete} />
 </li>

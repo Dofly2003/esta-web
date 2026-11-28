@@ -1,5 +1,6 @@
 ---
 import Dash from "../../layouts/Dash.astro";
+import Pager from "../../components/dash/Pager.astro";
 import PageHeader from "../../components/dash/PageHeader.astro";
 import Icon from "../../components/dash/Icon.astro";
 import Badge from "../../components/dash/Badge.astro";
@@ -40,9 +41,6 @@ const filterItems = [
 ].map((i) => ({ ...i, countSr: "inquiry" }));
 // halaman: 1 … (page-2 … page+2) … pages
 const pageHref = (n: number) => apiPath("/dashboard/inbox", { status, page: n > 1 ? n : "" }) + "#h-inbox";
-const pageNums = [...new Set([1, ...Array.from({ length: 5 }, (_, i) => page - 2 + i), pages])]
-  .filter((n) => n >= 1 && n <= pages)
-  .sort((a, b) => a - b);
 const from = total ? (page - 1) * pageSize + 1 : 0;
 const to = Math.min(page * pageSize, total);
 // lewat janji website (1×24 jam) dan masih Baru
@@ -203,38 +201,7 @@ const mailto = (q: Inquiry) => {
           </ul>
         )
       }
-      {
-        pages > 1 && (
-          <nav class="pager" aria-label="Halaman inbox">
-            {page > 1 ? (
-              <a href={pageHref(page - 1)} class="btn btn-sm" rel="prev">
-                Sebelumnya
-              </a>
-            ) : null}
-            {pageNums.map((n, i) => (
-              <>
-                {i > 0 && n - pageNums[i - 1]! > 1 && <span class="t-2" aria-hidden="true">…</span>}
-                {n === page ? (
-                  <span class="btn btn-sm pager-cur num" aria-current="page">
-                    <span class="vh">Halaman </span>
-                    {n}
-                  </span>
-                ) : (
-                  <a href={pageHref(n)} class="btn btn-sm btn-quiet num">
-                    <span class="vh">Halaman </span>
-                    {n}
-                  </a>
-                )}
-              </>
-            ))}
-            {page < pages ? (
-              <a href={pageHref(page + 1)} class="btn btn-sm" rel="next">
-                Berikutnya
-              </a>
-            ) : null}
-          </nav>
-        )
-      }
+      <Pager page={page} pages={pages} href={pageHref} label="Halaman inbox" />
     </section>
   </div>
 </Dash>
@@ -254,18 +221,6 @@ const mailto = (q: Inquiry) => {
 </script>
 
 <style>
-  /* navigasi halaman Inbox (INBOX_PAGE_SIZE per halaman) */
-  .pager {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--s-2);
-    margin-top: var(--s-4);
-  }
-  .pager-cur {
-    font-weight: var(--fw-semibold);
-    pointer-events: none;
-  }
   /* baris inquiry: titik baru | isi; aksi di baris sendiri di bawah isi (4 tombol tidak memeras pesannya) */
   .inq {
     display: grid;

@@ -10,6 +10,7 @@ import * as F from "../../shared/format";
 import * as M from "../../shared/messages";
 import * as C from "../../shared/constants";
 import { errOf, get, login, net, okOf, ORIGIN, post, PW, q, raw } from "./helpers";
+import { TASK_BOARD_CAP as C_TASK_BOARD_CAP } from "../../shared/schemas/query";
 
 const NOW = new Date("2026-11-26T18:30:00.000Z");
 
@@ -467,6 +468,76 @@ describe("drill-down filters", () => {
     // active projects only (b1 on-hold, c1 done-project excluded); done=1 adds a3
     expect(all.tasks.length).toBe(7);
     expect(all.counts).toEqual({ overdue: 1, dueThisWeek: 3, unassigned: 1 });
+    // no board/col params: no colPage, full list (statusCounts is extra, additive)
+    expect(all.colPage).toBeUndefined();
+    const sum = Object.values(all.statusCounts as Record<string, number>).reduce((a, b) => a + b, 0);
+    expect(sum).toBe(all.tasks.length);
+    expect(all.statusCounts.DONE).toBe(1);
+  });
+  test("board=1 caps each status column, col= pages one column, pin keeps a task", async () => {
+    // 35 extra TODO tasks of mine with long notes (deadline far → sorted after the fixture tasks)
+    const extra: string[] = [];
+    for (let i = 0; i < 35; i++)
+      extra.push(
+        await repo.tasks.create({
+          projectId: ids.G,
+          title: `cap ${String(i).padStart(2, "0")}`,
+          description: "x".repeat(400),
+          status: "TODO",
+          priority: "LOW",
+          dueDate: day(100 + i),
+          assigneeId: admin,
+        }),
+      );
+    try {
+      const full = (await get("/api/tasks", { cookie: adminCookie })).body;
+      const todo = full.tasks.filter((t: any) => t.status === "TODO");
+      expect(full.tasks.length).toBe(39);
+      expect(full.tasks.find((t: any) => t.id === extra[0]).description.length).toBe(400);
+
+      const b = (await get("/api/tasks?board=1", { cookie: adminCookie })).body;
+      expect(b.tasks.filter((t: any) => t.status === "TODO").length).toBe(C_TASK_BOARD_CAP);
+      // same order as the full list, just cut
+      const ids_ = (l: any[]) => l.map((t: any) => t.id);
+      const kept = new Set(ids_(todo.slice(0, C_TASK_BOARD_CAP)));
+      expect(ids_(b.tasks)).toEqual(ids_(full.tasks.filter((t: any) => t.status !== "TODO" || kept.has(t.id))));
+      expect(b.statusCounts.TODO).toBe(todo.length);
+      expect(b.tasks.find((t: any) => t.id === extra[0]).description.length).toBe(280);
+      expect(b.counts).toEqual(full.counts);
+
+      // pin: a task beyond the cap is kept (at its sorted position)
+      const last = todo[todo.length - 1].id;
+      const pinned = (await get(`/api/tasks?board=1&pin=${last}`, { cookie: adminCookie })).body;
+      expect(pinned.tasks.length).toBe(b.tasks.length + 1);
+      expect(pinned.tasks.filter((t: any) => t.status === "TODO").at(-1).id).toBe(last);
+
+      // one column, paged; page past the end is clamped; junk params ignored
+      const p1 = (await get("/api/tasks?col=TODO", { cookie: adminCookie })).body;
+      expect(p1.colPage).toEqual({ page: 1, pages: 1, total: todo.length });
+      expect(p1.tasks.map((t: any) => t.id)).toEqual(todo.map((t: any) => t.id));
+      const p9 = (await get("/api/tasks?col=TODO&page=9", { cookie: adminCookie })).body;
+      expect(p9.colPage.page).toBe(1);
+      const empty = (await get("/api/tasks?col=REVIEW", { cookie: adminCookie })).body;
+      expect(empty.tasks).toEqual([]);
+      expect(empty.colPage).toEqual({ page: 1, pages: 1, total: 0 });
+      const junk = (await get("/api/tasks?board=2&col=NOPE&page=-1&pin=a%20b", { cookie: adminCookie })).body;
+      expect(junk.tasks.length).toBe(39);
+      expect(junk.colPage).toBeUndefined();
+    } finally {
+      for (const id of extra) await repo.tasks.remove(id);
+    }
+  });
+  test("GET /api/tasks/:id = edit form data; unknown id 404; needs login", async () => {
+    const r = await get(`/api/tasks/${ids.g1}`, { cookie: adminCookie });
+    expect(r.status).toBe(200);
+    expect(r.body.task.id).toBe(ids.g1);
+    expect(Object.keys(r.body.task).sort()).toEqual(
+      ["assigneeId", "description", "dueDate", "id", "priority", "projectId", "status", "title", "updatedAt"].sort(),
+    );
+    expect(r.body.users.map((u: any) => u.name).sort()).toEqual(["Admin T", "Member T"]);
+    expect(r.body.users[0].passwordHash).toBeUndefined();
+    expect((await get("/api/tasks/nope", { cookie: adminCookie })).status).toBe(404);
+    expect((await get(`/api/tasks/${ids.g1}`)).status).toBe(401);
   });
   test("due=overdue|week, assignee=none|<id>", async () => {
     expect(titles((await get("/api/tasks?filter=all&due=overdue", { cookie: adminCookie })).body)).toEqual([

@@ -11,7 +11,14 @@ import { envOf } from "../../server/env";
 import { FALLBACK_HTML_CSP, HSTS, NON_HTML_CSP, secure } from "../../server/headers";
 import { errInfo, redact } from "../../server/log";
 import * as repo from "../../server/repo";
-import { INBOX_PAGE_SIZE, inquiriesQuery, queryOf, readQuery, tasksQuery } from "../../shared/schemas/query";
+import {
+  INBOX_PAGE_SIZE,
+  inquiriesQuery,
+  queryOf,
+  readQuery,
+  taskBoardQuery,
+  tasksQuery,
+} from "../../shared/schemas/query";
 import { fmtLongDate, today } from "../../shared/format";
 import type { User } from "../../shared/types";
 import { errOf, freshTeam, get, newProject, ORIGIN, post, PW, raw } from "./helpers";
@@ -502,6 +509,18 @@ describe("small utilities", () => {
       due: "",
       assignee: "none",
       status: "",
+    });
+    expect(readQuery(taskBoardQuery, new URLSearchParams("board=1&col=DONE&page=3&pin=abc-1"))).toEqual({
+      board: "1",
+      col: "DONE",
+      page: 3,
+      pin: "abc-1",
+    });
+    expect(readQuery(taskBoardQuery, new URLSearchParams("board=yes&col=x&page=1e3&pin=a/b"))).toEqual({
+      board: "",
+      col: "",
+      page: 1,
+      pin: "",
     });
   });
   test("env: defaults and bad values never crash", () => {
