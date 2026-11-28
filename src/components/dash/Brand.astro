@@ -1,0 +1,20 @@
+---
+// Merek dashboard: kotak logo (.logo, Mark currentColor) + "ESTA Studio" + baris kedua opsional.
+// Dipakai sidebar Dash.astro (sub "Dashboard tim") dan halaman login (size="lg", tanpa sub).
+import Mark from "../Mark.astro";
+
+interface Props {
+  sub?: string;
+  size?: "md" | "lg";
+  class?: string;
+}
+const { sub, size = "md", class: cls } = Astro.props;
+---
+
+<span class:list={["brand", size === "lg" && "is-lg", cls]}>
+  <span class="logo" aria-hidden="true"><Mark size={13} tone="current" /></span>
+  <span class="brand-text">
+    <span class="brand-title">ESTA Studio</span>
+    {sub && <span class="brand-sub">{sub}</span>}
+  </span>
+</span>

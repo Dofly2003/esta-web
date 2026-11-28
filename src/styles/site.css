@@ -1,0 +1,217 @@
+/* ============================================================
+   CSS website publik (halaman yang memakai layouts/Site.astro, termasuk pratinjau karya dashboard).
+   Dashboard & login memakai dash.css: kedua permukaan hanya memuat aturannya sendiri.
+   Tailwind hanya memindai berkas website publik (source(none) + @source), jadi utilitas khusus dashboard
+   tidak ikut di sini.
+
+   ESTA design system
+   Palet diambil dari identitas ESTA: navy malam + gradasi titik
+   sky → azure → indigo → violet. Tipografi: Geist (teks), Geist Mono
+   (label teknis), Geist Pixel Square/Circle (pixel & dot-matrix — gema dari titik logo ESTA).
+   ============================================================ */
+@import "tailwindcss" source(none);
+@import "./tokens.css";
+@source "../layouts/Site.astro";
+@source "../layouts/Base.astro";
+@source "../pages/index.astro";
+@source "../pages/contact.astro";
+@source "../pages/404.astro";
+@source "../pages/portfolio";
+@source "../pages/dashboard/portfolio/*/pratinjau.astro";
+@source "../components/*.astro";
+@source "../scripts";
+@source "../lib";
+@source "../../shared";
+
+/* Geist Pixel (Vercel, SIL OFL 1.1) — lisensi: public/fonts/GeistPixel-LICENSE.txt. Nama file di-hash saat build. */
+@font-face {
+  font-family: "Geist Pixel Square";
+  src: url("../assets/fonts/GeistPixel-Square.woff2") format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Pixel Circle";
+  src: url("../assets/fonts/GeistPixel-Circle.woff2") format("woff2");
+  font-display: swap;
+}
+
+/* ---------- form kontak publik (ContactForm.astro) ---------- */
+@utility input-dark {
+  @apply w-full border border-white/12 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/45 focus:border-sky focus:bg-white/[0.06];
+}
+
+.input-dark option,
+.input-dark optgroup {
+  color: #111;
+  background-color: #fff;
+}
+select.input-dark {
+  background-color: var(--color-ink-2);
+}
+
+/* ---------- website publik ---------- */
+@utility mono {
+  @apply font-mono text-[13px] font-medium tracking-[-0.02em] uppercase;
+}
+@utility mono-dim {
+  @apply mono text-white/50;
+}
+@utility container-x {
+  @apply mx-auto w-full max-w-[1200px] px-5 md:px-8;
+}
+@utility grad {
+  background-image: linear-gradient(135deg, var(--color-sky) 0%, var(--color-azure) 45%, var(--color-violet) 100%);
+}
+
+/* latar grid garis tipis */
+.grid-bg {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.045) 1px, transparent 1px);
+  background-size: 90px 90px;
+  background-position: center top;
+}
+
+/* blok highlight judul: kotak putih teks navy */
+.hl {
+  display: inline-block;
+  vertical-align: top;
+  background: #fff;
+  color: var(--color-ink);
+  padding: 0 0.12em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.hl-pixel {
+  font-family: var(--font-pixel);
+  font-weight: 400;
+  letter-spacing: -0.07em;
+}
+.hl-sans {
+  font-weight: 400;
+  letter-spacing: -0.06em;
+}
+.hl-tag {
+  display: inline-block;
+  background: #fff;
+  color: var(--color-ink);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  padding: 0.06em 0.12em;
+}
+
+/* glass orb */
+.orb {
+  border-radius: 9999px;
+  background:
+    radial-gradient(120% 120% at 30% 20%, rgb(255 255 255 / 0.35), transparent 45%),
+    radial-gradient(90% 90% at 70% 85%, rgb(94 200 242 / 0.35), transparent 60%), rgb(16 21 58 / 0.55);
+  border: 1px solid rgb(255 255 255 / 0.25);
+  box-shadow:
+    inset 0 1px 12px rgb(255 255 255 / 0.25),
+    inset 0 -10px 20px rgb(11 15 42 / 0.6),
+    0 20px 40px rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(6px) saturate(1.2);
+}
+
+/* tombol roll (ikon kotak + label) */
+.rbtn {
+  display: inline-flex;
+  height: 44px;
+  align-items: stretch;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+.rbtn-icon {
+  position: relative;
+  display: grid;
+  width: 44px;
+  place-items: center;
+  overflow: hidden;
+  color: var(--color-ink);
+}
+.rbtn-icon svg {
+  grid-area: 1 / 1;
+}
+/* panah kedua menunggu di luar kotak (kiri) — keluar penuh, tidak mengintip */
+.rbtn-icon svg[data-arrow="1"] {
+  transform: translateX(-44px);
+}
+.rbtn-label {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border: 1px solid rgb(255 255 255 / 0.85);
+  background: var(--color-ink);
+  color: #fff;
+}
+.rbtn-light .rbtn-label {
+  border-color: var(--color-ink);
+  background: #fff;
+  color: var(--color-ink);
+}
+.roll {
+  display: inline-flex;
+}
+.roll-c {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  white-space: pre;
+}
+.roll-c > span {
+  display: block;
+}
+.roll-c > span + span {
+  position: absolute;
+  inset: 100% 0 auto 0;
+}
+
+/* aksen kursor berkedip untuk label mono */
+.blink {
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .blink {
+    animation: none;
+  }
+}
+
+/* ---------- motion: status awal sebelum GSAP jalan ----------
+   Kelas .js ditambahkan oleh script inline di <head>. Jika GSAP gagal
+   dimuat dalam 3 detik, .motion-fallback membuka semua konten. */
+.js:not(.motion-fallback) [data-hl-line] {
+  clip-path: inset(0 100% 0 0);
+}
+/* visibility: sama dengan autoAlpha 0 GSAP (tautan yang belum muncul tidak bisa difokus); motion.ts tidak
+   merender status awal ini lagi saat membuat tween (immediateRender: false) */
+.js:not(.motion-fallback) [data-fade],
+.js:not(.motion-fallback) [data-stagger] > * {
+  opacity: 0;
+  visibility: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .js [data-hl-line] {
+    clip-path: none !important;
+  }
+  .js [data-fade],
+  .js [data-stagger] > * {
+    opacity: 1 !important;
+    visibility: inherit !important;
+  }
+}
+
+/* masker baris SplitText: beri ruang untuk descender (g, y, p) agar tidak terpotong */
+.split-line-mask {
+  padding-bottom: 0.14em;
+  margin-bottom: -0.14em;
+}

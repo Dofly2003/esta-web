@@ -1,0 +1,109 @@
+/* ============================================================
+   Dasar bersama website publik (site.css) dan dashboard (dash.css): font teks, token tema, reset kecil.
+   Diimpor SETELAH @import "tailwindcss" di kedua file (dan setelah dashboard.css di dash.css), urutan
+   yang sama dengan global.css dulu.
+   ============================================================ */
+
+/* Geist & Geist Mono (Vercel, SIL OFL 1.1 — lisensi: public/fonts/GeistPixel-LICENSE.txt, hak cipta & lisensi
+   sama untuk semua keluarga Geist). Self-host: file variabel yang sama dengan yang dulu dikirim Google Fonts
+   (subset latin + latin-ext, unicode-range sama), jadi tampilan identik tanpa koneksi ke pihak ketiga.
+   Nama file di-hash saat build (/_astro/…, cache immutable). latin-ext hanya diunduh bila ada karakternya. */
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("../assets/fonts/Geist-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("../assets/fonts/Geist-latin-ext.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("../assets/fonts/GeistMono-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("../assets/fonts/GeistMono-latin-ext.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@theme {
+  --color-ink: #0b0f2a;
+  --color-ink-2: #10153a;
+  --color-ink-3: #182052;
+  --color-sky: #5ec8f2;
+  --color-azure: #4f86e0;
+  --color-indigo: #5a5fd8;
+  --color-violet: #6b4fc8;
+  --color-lavender: #a3aee8;
+  --color-paper: #f3f5ff;
+
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-pixel: "Geist Pixel Square", "Geist Mono", monospace;
+  --font-dot: "Geist Pixel Circle", "Geist Mono", monospace;
+}
+
+html {
+  background: var(--color-ink);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+summary,
+select {
+  cursor: pointer;
+}
+
+/* hindari satu kata yatim di baris terakhir paragraf */
+p,
+li,
+dd {
+  text-wrap: pretty;
+}
+
+/* fokus keyboard yang selalu terlihat di latar gelap maupun terang */
+:focus-visible {
+  outline: 2px solid var(--color-sky);
+  outline-offset: 3px;
+}
+
+/* sentuhan: tanpa jeda double-tap zoom, sorotan ketuk diganti state hover/fokus */
+a,
+button,
+summary,
+label,
+select {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: var(--color-sky);
+  color: var(--color-ink);
+}

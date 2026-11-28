@@ -1,0 +1,39 @@
+---
+// Baris tugas untuk daftar berkelompok di detail proyek (render <li class="task" id="task-<id>">,
+// letakkan di dalam <ul class="rows"> di bawah .tgroup-h). Form status/edit/hapus: TaskActions.
+import Badge from "./Badge.astro";
+import Person from "./Person.astro";
+import Due from "./Due.astro";
+import TaskActions from "./TaskActions.astro";
+import { PRIORITY } from "@shared/constants";
+import { isDone, isLate } from "@shared/format";
+import type { ProjectTask } from "@shared/types";
+
+interface Props {
+  task: ProjectTask;
+  /** anchor tujuan setelah tugas dihapus */
+  afterDelete?: string;
+}
+const { task: t, afterDelete } = Astro.props;
+---
+
+<li class="task" id={`task-${t.id}`} data-row tabindex="-1">
+  <div class="task-main">
+    <p class:list={["task-title", isDone(t) && "is-done"]}>{t.title}</p>
+    {t.description && <p class="cap line-clamp-1">{t.description}</p>}
+  </div>
+  <div class="task-meta">
+    <Badge opt={PRIORITY[t.priority]} />
+    <span class="small">
+      <span class="vh">Penanggung jawab: </span>
+      <Person
+        name={t.assignee?.name}
+        fallback="Tanpa PJ"
+        title={t.assignee?.name ? undefined : "Tanpa penanggung jawab"}
+        nameClass="ell t-2"
+      />
+    </span>
+    <Due date={t.dueDate} late={isLate(t)} class="task-due num small" quietClass="t-2" icon blank />
+  </div>
+  <TaskActions task={t} variant="row" afterDelete={afterDelete} />
+</li>

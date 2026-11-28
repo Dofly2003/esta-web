@@ -1,19 +1,34 @@
 ---
+// Lingkaran inisial (.avatar, 24px; size="lg" → 32px).
+// Tanpa nama: lingkaran putus-putus dengan ikon orang 12px (bukan "?", yang terbaca seperti bantuan) + tooltip emptyTitle. decorative → aria-hidden, tanpa tooltip
+// (pakai bila nama sudah tertulis di sebelahnya, mis. di Person). Atribut lain diteruskan ke <span>.
+import Icon from "./Icon.astro";
 import { initials } from "@shared/format";
 
 interface Props {
   name?: string | null;
-  size?: string;
+  size?: "md" | "lg";
+  class?: string;
+  emptyTitle?: string;
+  decorative?: boolean;
+  [attr: string]: unknown;
 }
-const { name, size = "h-6 w-6" } = Astro.props;
+const { name, size = "md", class: cls, emptyTitle = "Tanpa penanggung jawab", decorative = false, ...attrs } = Astro.props;
+const classes = ["avatar", size === "lg" && "avatar-lg", !name && "is-empty", cls];
 ---
 
 {
-  name ? (
-    <span title={name} class={`${size} grid shrink-0 place-items-center rounded-full bg-accent/10 text-[10px] font-bold text-accent`}>
+  decorative ? (
+    <span class:list={classes} aria-hidden="true" {...attrs}>
+      {name ? initials(name) : <Icon name="users" />}
+    </span>
+  ) : name ? (
+    <span title={name} class:list={classes} {...attrs}>
       {initials(name)}
     </span>
   ) : (
-    <span class={`${size} grid place-items-center rounded-full border border-dashed border-zinc-300 text-[10px] text-zinc-400`}>?</span>
+    <span class:list={classes} title={emptyTitle} role="img" aria-label={emptyTitle} {...attrs}>
+      <Icon name="users" />
+    </span>
   )
 }

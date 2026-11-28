@@ -1,63 +1,316 @@
 ---
 import Dash from "../../layouts/Dash.astro";
+import Pager from "../../components/dash/Pager.astro";
 import PageHeader from "../../components/dash/PageHeader.astro";
-import { autoSubmit, confirmAttr, pill } from "../../components/dash/ui";
-import { api } from "../../lib/api";
-import { INQUIRY_STATUS } from "@shared/constants";
-import { fmtDate } from "@shared/format";
-import type { Inquiry } from "@shared/types";
+import Icon from "../../components/dash/Icon.astro";
+import Badge from "../../components/dash/Badge.astro";
+import SegFilter from "../../components/dash/SegFilter.astro";
+import EmptyState from "../../components/dash/EmptyState.astro";
+import StatusSelect from "../../components/dash/StatusSelect.astro";
+import DeleteForm from "../../components/dash/DeleteForm.astro";
+import { here } from "../../components/dash/ui";
+import { api, apiPath } from "../../lib/api";
+import { BRAND, INQUIRY_STATUS, INQUIRY_STATUS_ALL, INQUIRY_STATUS_LEGACY, isAdmin, labelOf, REPLY_WITHIN_HOURS } from "@shared/constants";
+import { agoText, cutText, fmtDate, hoursSince } from "@shared/format";
+import { inquiriesQuery, readQuery } from "@shared/schemas/query";
+import type { InquiriesResponse, Inquiry } from "@shared/types";
 
-const status = Astro.url.searchParams.get("status") ?? "";
-const items = await api<Inquiry[]>(Astro, `/api/inquiries${status ? `?status=${status}` : ""}`);
-const back = Astro.url.pathname + Astro.url.search;
+const admin = isAdmin(Astro.locals.user!);
+const sp = Astro.url.searchParams;
+const query = readQuery(inquiriesQuery, sp);
+const { status } = query;
+// satu halaman (INBOX_PAGE_SIZE) + hitungan per status. Triase "Baru": yang paling lama menunggu di atas.
+// ?inq=<id> tanpa ?page = halaman yang memuat inquiry itu (tautan dari Ringkasan / Discord).
+const { items, counts, total, page, pages, pageSize } = await api<InquiriesResponse>(
+  Astro,
+  apiPath("/api/inquiries", { status, page: sp.has("page") ? query.page : "", inq: query.inq }),
+);
+
+const activeLabel = status ? labelOf(INQUIRY_STATUS_ALL, status) : "Semua inquiry";
+// status lama "Selesai" (CLOSED) hanya tampil sebagai segmen bila masih ada datanya
+const legacy = Object.entries(INQUIRY_STATUS_LEGACY).filter(([k]) => (counts[k] ?? 0) > 0);
+const allCount = Object.values(counts).reduce((a, b) => a + b, 0);
+const filterItems = [
+  { href: "/dashboard/inbox", label: "Semua", current: !status, count: allCount },
+  ...[...Object.entries(INQUIRY_STATUS), ...legacy].map(([k, v]) => ({
+    href: `/dashboard/inbox?status=${k}`,
+    label: v.label,
+    current: status === k,
+    count: counts[k] ?? 0,
+  })),
+].map((i) => ({ ...i, countSr: "inquiry" }));
+// halaman: 1 … (page-2 … page+2) … pages
+const pageHref = (n: number) => apiPath("/dashboard/inbox", { status, page: n > 1 ? n : "" }) + "#h-inbox";
+const from = total ? (page - 1) * pageSize + 1 : 0;
+const to = Math.min(page * pageSize, total);
+// lewat janji website (1×24 jam) dan masih Baru
+const overdueReply = (q: Inquiry) => q.status === "NEW" && hoursSince(q.createdAt) >= REPLY_WITHIN_HOURS;
+const waitingDays = (q: Inquiry) => Math.max(1, Math.floor(hoursSince(q.createdAt) / 24));
+// isi email balasan (mailto: subject + body; kutipan dipendekkan agar URL tidak terlalu panjang)
+const mailto = (q: Inquiry) => {
+  const body = [
+    `Halo ${q.name},`,
+    "",
+    `Terima kasih sudah menghubungi ${BRAND.name}.`,
+    "",
+    "",
+    "Salam,",
+    BRAND.name,
+    "",
+    "---",
+    ...cutText(q.message, 500)
+      .split("\n")
+      .map((l) => `> ${l}`),
+  ].join("\r\n");
+  return `mailto:${q.email}?subject=${encodeURIComponent(`Re: Inquiry proyek ${BRAND.name}`)}&body=${encodeURIComponent(body)}`;
+};
 ---
 
 <Dash title="Inbox">
-  <PageHeader title="Inbox" subtitle="Pesan dari form Kontak di website." />
-  <div class="mb-6 flex flex-wrap gap-2">
-    <a href="/dashboard/inbox" class={pill(!status)}>Semua</a>
-    {Object.entries(INQUIRY_STATUS).map(([k, v]) => <a href={`/dashboard/inbox?status=${k}`} class={pill(status === k)}>{v.label}</a>)}
-  </div>
+  <PageHeader title="Inbox" subtitle="Inquiry dari form Kontak di website. Janji kami: dibalas maks. 1×24 jam." />
 
-  {
-    items.length === 0 ? (
-      <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">Belum ada pesan.</p>
-    ) : (
-      <div class="space-y-3">
-        {items.map((q) => (
-          <article class="card p-5">
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p class="font-semibold">{q.name} {q.company && <span class="font-normal text-zinc-500">· {q.company}</span>}</p>
-                <a href={`mailto:${q.email}`} class="text-sm text-accent hover:underline">{q.email}</a>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-zinc-400">{fmtDate(q.createdAt)}</span>
-                <form method="post" action={`/api/inquiries/${q.id}/status`}>
-                  <input type="hidden" name="_back" value={back} />
-                  <select name="status" aria-label="Status" class="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs" {...autoSubmit}>
-                    {Object.entries(INQUIRY_STATUS).map(([k, v]) => <option value={k} selected={q.status === k}>{v.label}</option>)}
-                  </select>
-                </form>
-              </div>
-            </div>
-            {(q.service || q.budget) && (
-              <div class="mt-3 flex flex-wrap gap-2">
-                {q.service && <span class="badge bg-violet-50 text-violet-700">{q.service}</span>}
-                {q.budget && <span class="badge bg-zinc-100 text-zinc-600">{q.budget}</span>}
-              </div>
+  <div class="stack">
+    <div class="filters">
+      <SegFilter label="Filter status" items={filterItems} />
+    </div>
+
+    <section class="sec" aria-labelledby="h-inbox">
+      <h2 class="vh" id="h-inbox">{activeLabel}</h2>
+      <p class="cap num list-meta">
+        <span>
+          {total} inquiry{status && ` berstatus ${activeLabel}`}
+          {pages > 1 && ` · ${from}–${to}`}
+          {status === "NEW" && total > 1 && " · terlama menunggu di atas"}
+        </span>
+      </p>
+      <span tabindex="-1" data-anchor-fallback class="vh">Daftar {activeLabel}</span>
+      {
+        items.length === 0 ? (
+          <EmptyState
+            icon="inbox"
+            title={status ? `Tidak ada inquiry berstatus ${activeLabel}.` : "Belum ada inquiry."}
+            text={status ? "Pilih status lain atau lihat semua inquiry." : "Inquiry dari form Kontak di website akan muncul di sini."}
+          >
+            {status && (
+              <a slot="actions" href="/dashboard/inbox" class="btn btn-sm">
+                Lihat semua
+              </a>
             )}
-            <p class="mt-3 whitespace-pre-line text-sm text-zinc-700">{q.message}</p>
-            <div class="mt-4 flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
-              <a href={`mailto:${q.email}?subject=${encodeURIComponent("Re: Inquiry proyek ESTA")}`} class="btn-ghost">Balas email</a>
-              <form method="post" action={`/api/inquiries/${q.id}/delete`}>
-                <input type="hidden" name="_back" value={back} />
-                <button class="btn-danger" {...confirmAttr("Hapus pesan ini?")}>Hapus</button>
-              </form>
-            </div>
-          </article>
-        ))}
-      </div>
-    )
-  }
+          </EmptyState>
+        ) : (
+          <ul class="list">
+            {items.map((q) => {
+              const isNew = q.status === "NEW";
+              const late = overdueReply(q);
+              const rowId = `inq-${q.id}`;
+              // status lama (CLOSED) tetap bisa dibaca di select baris itu
+              const options = Object.hasOwn(INQUIRY_STATUS, q.status) ? INQUIRY_STATUS : { ...INQUIRY_STATUS, ...INQUIRY_STATUS_LEGACY };
+              return (
+                <li id={rowId} data-row tabindex="-1">
+                  <article class="inq" aria-labelledby={`${rowId}-h`}>
+                    <span class="inq-mark" aria-hidden="true">
+                      {isNew && <span class="dot tone-info" />}
+                    </span>
+                    <div class="inq-body">
+                      <div class="inq-head">
+                        <h3 class="h3 inq-name" id={`${rowId}-h`}>
+                          {isNew && <span class="vh">Baru: </span>}
+                          {q.name}
+                          {q.company && <span class="t-2 inq-co"> · {q.company}</span>}
+                        </h3>
+                        <span class="cap num">
+                          <time datetime={q.createdAt}>{fmtDate(q.createdAt)}</time>
+                          {" · "}
+                          {late ? (
+                            <span class="v-warn">lewat 1×24 jam · menunggu {waitingDays(q)} hari</span>
+                          ) : (
+                            agoText(q.createdAt)
+                          )}
+                        </span>
+                      </div>
+                      <a href={`mailto:${q.email}`} class="link-accent small inq-mail">
+                        {q.email}
+                      </a>
+                      {(q.service || q.budget) && (
+                        <div class="inq-tags">
+                          {q.service && <Badge tone="none">{q.service}</Badge>}
+                          {q.budget && <Badge tone="none">{q.budget}</Badge>}
+                        </div>
+                      )}
+                      <p class="inq-msg" id={`${rowId}-msg`}>
+                        {q.message}
+                      </p>
+                      {/* pesan panjang dipotong 4 baris (dengan JS); tombol muncul hanya bila memang terpotong */}
+                      <button type="button" class="link small inq-more js-only" aria-expanded="false" aria-controls={`${rowId}-msg`} hidden>
+                        Tampilkan semua
+                      </button>
+                    </div>
+                    <div class="inq-actions">
+                      <StatusSelect
+                        action={`/api/inquiries/${q.id}/status`}
+                        back={here(Astro.url, rowId)}
+                        options={options}
+                        selected={q.status}
+                        label="Status"
+                        labelSr={` inquiry dari ${q.name}`}
+                        saveSr={` status inquiry dari ${q.name}`}
+                        id={`st-${q.id}`}
+                        labelClass="cap"
+                        class="inq-status"
+                        selectClass="input-sm"
+                      />
+                      <a href={mailto(q)} class="btn btn-sm">
+                        <Icon name="mail" class="ic-sm" />
+                        Balas email<span class="vh"> ke {q.name}</span>
+                      </a>
+                      {/* setelah membalas: satu klik untuk menandai Dihubungi */}
+                      {isNew && (
+                        <form method="post" action={`/api/inquiries/${q.id}/status`} class="inq-contacted">
+                          <input type="hidden" name="_back" value={here(Astro.url, rowId)} />
+                          <input type="hidden" name="status" value="CONTACTED" />
+                          <button type="submit" class="btn btn-sm btn-quiet" data-pending-label="Menandai…">
+                            <Icon name="check" class="ic-sm" />
+                            Tandai dihubungi<span class="vh"> : {q.name}</span>
+                          </button>
+                        </form>
+                      )}
+                      {q.status !== "WON" && (
+                        <a href={`/dashboard/projects?new=1&dari=${encodeURIComponent(q.id)}#proyek-baru`} class="btn btn-sm">
+                          <Icon name="folder" class="ic-sm" />
+                          Jadikan proyek<span class="vh"> dari inquiry {q.name}</span>
+                        </a>
+                      )}
+                      {admin && (
+                        <DeleteForm
+                          action={`/api/inquiries/${q.id}/delete`}
+                          confirm={`Hapus inquiry dari ${q.name}? Tindakan ini tidak bisa dibatalkan.`}
+                          label="Hapus inquiry"
+                          srSuffix={` dari ${q.name}`}
+                          back={here(Astro.url, "h-inbox")}
+                          size="sm"
+                          quiet
+                          iconOnly
+                          class="inq-del"
+                        />
+                      )}
+                    </div>
+                  </article>
+                </li>
+              );
+            })}
+          </ul>
+        )
+      }
+      <Pager page={page} pages={pages} href={pageHref} label="Halaman inbox" />
+    </section>
+  </div>
 </Dash>
+
+<script>
+  // "Tampilkan semua" untuk pesan yang terpotong (tanpa JS pesan tampil utuh)
+  for (const b of document.querySelectorAll<HTMLButtonElement>(".inq-more")) {
+    const msg = document.getElementById(b.getAttribute("aria-controls") ?? "");
+    if (!msg) continue;
+    if (msg.scrollHeight > msg.clientHeight + 1) b.hidden = false;
+    b.addEventListener("click", () => {
+      const open = msg.classList.toggle("is-open");
+      b.setAttribute("aria-expanded", String(open));
+      b.textContent = open ? "Tampilkan lebih sedikit" : "Tampilkan semua";
+    });
+  }
+</script>
+
+<style>
+  /* baris inquiry: titik baru | isi; aksi di baris sendiri di bawah isi (4 tombol tidak memeras pesannya) */
+  .inq {
+    display: grid;
+    grid-template-columns: var(--dot) minmax(0, 1fr);
+    gap: var(--s-3);
+    padding: var(--s-4) var(--s-5) var(--s-4) var(--s-4);
+    align-items: start;
+  }
+  .inq-mark {
+    display: flex;
+    height: var(--lh-14);
+    align-items: center;
+  }
+  .inq-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    min-width: 0;
+  }
+  .inq-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s-1) var(--s-3);
+    flex-wrap: wrap;
+  }
+  .inq-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .inq-co {
+    font-weight: var(--fw-regular);
+  }
+  .inq-mail {
+    width: fit-content;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .inq-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+    margin-top: var(--s-1);
+  }
+  .inq-msg {
+    margin-top: var(--s-2);
+    max-width: 72ch;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    color: var(--text-2);
+  }
+  :global(.js) .inq-msg:not(.is-open) {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .inq-more {
+    align-self: flex-start;
+    min-height: var(--hit-xs);
+    color: var(--text);
+    font-weight: var(--fw-medium);
+  }
+  .inq-actions {
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+  }
+  .inq-del {
+    margin-left: auto;
+  }
+  .inq-status {
+    flex-wrap: nowrap;
+  }
+  /* select di dalam StatusSelect (komponen meneruskan atribut scope ke <form>, bukan ke <select>) */
+  .inq-status :global(select) {
+    width: auto;
+    min-width: 128px;
+  }
+  @media (max-width: 639px) {
+    .inq {
+      padding: var(--s-4);
+    }
+    .inq-status {
+      flex: 1 1 100%;
+    }
+    .inq-status :global(select) {
+      flex: 1;
+      width: 100%;
+    }
+  }
+</style>

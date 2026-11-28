@@ -1,0 +1,40 @@
+---
+// Orb kaca mengambang. Isi: mark ESTA (putih) atau bintang pixel.
+import Mark from "./Mark.astro";
+
+interface Props {
+  icon?: "mark" | "spark";
+  size?: number;
+  class?: string;
+}
+const { icon = "mark", size = 120, class: className = "" } = Astro.props;
+// bintang pixel 7x7 (tanda "+" tebal dengan ujung terpotong)
+const spark = [
+  "0001000",
+  "0011100",
+  "0111110",
+  "1111111",
+  "0111110",
+  "0011100",
+  "0001000",
+];
+---
+
+<div
+  data-orb
+  class={`orb pointer-events-none absolute grid place-items-center ${className}`}
+  style={{ width: `${size}px`, height: `${size}px` }}
+  aria-hidden="true"
+>
+  {
+    icon === "mark" ? (
+      <Mark size={size * 0.36} tone="white" />
+    ) : (
+      <svg width={size * 0.36} height={size * 0.36} viewBox="0 0 70 70">
+        {spark.flatMap((row, y) =>
+          [...row].map((v, x) => (v === "1" ? <rect x={x * 10} y={y * 10} width="9" height="9" fill="#fff" /> : null)),
+        )}
+      </svg>
+    )
+  }
+</div>

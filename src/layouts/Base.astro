@@ -1,29 +1,52 @@
 ---
-import "../styles/global.css";
+// CSS tidak diimpor di sini: website publik → Site.astro (site.css), dashboard & login → dash.css.
+// Font teks di-self-host (tokens.css); hanya Geist latin (dipakai semua halaman) + Geist Pixel Square
+// (judul hero publik) yang di-preload. URL ber-hash dari Vite (/_astro/…, immutable).
+import geist from "../assets/fonts/Geist-latin.woff2?url";
+import pixel from "../assets/fonts/GeistPixel-Square.woff2?url";
 
 interface Props {
   title?: string;
   description?: string;
+  /** true = halaman dashboard tim: memasang <html data-dash> (sistem desain dashboard.css) */
+  dash?: boolean;
+  /** kelas tambahan <html> (mis. "has-flash" dari Dash.astro) */
+  rootClass?: string;
 }
-const { title, description = "ESTA membangun website, web app, dan mobile app yang bekerja untuk bisnis Anda." } =
-  Astro.props;
-const fullTitle = title ? `${title} · ESTA` : "ESTA — Digital Studio";
+const {
+  title,
+  dash = false,
+  rootClass,
+  description = "ESTA Studio membuat website dan software untuk bisnis. Berbasis di Surabaya, melayani seluruh Indonesia.",
+} = Astro.props;
+const fullTitle = title ? `${title} · ESTA Studio` : "ESTA Studio · Ubah Idemu Jadi Solusi Digital";
 ---
 
 <!doctype html>
-<html lang="id">
+<html lang="id" data-dash={dash ? "" : undefined} class={rootClass}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
+    {!dash && <meta name="theme-color" content="#0b0f2a" />}
+    <slot name="head" />
+    <link rel="preload" href={geist} as="font" type="font/woff2" crossorigin />
+    {/* font pixel hanya dipakai website publik (dashboard & login tidak memakainya) */}
+    {!dash && <link rel="preload" href={pixel} as="font" type="font/woff2" crossorigin />}
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
+    {
+      dash ? (
+        <script is:inline>document.documentElement.classList.add("js");</script>
+      ) : (
+        <script is:inline>
+          document.documentElement.classList.add("js");
+          setTimeout(function () {
+            if (!window.__estaMotion) document.documentElement.classList.add("motion-fallback");
+          }, 3000);
+        </script>
+      )
+    }
   </head>
   <body class="font-sans">
     <slot />

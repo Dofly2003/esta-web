@@ -1,0 +1,63 @@
+---
+// Aksi satu tugas, dipakai bersama oleh TaskCard (papan /dashboard/tasks) dan
+// TaskRow (daftar berkelompok di detail proyek):
+//   1. StatusSelect: ubah status (mouse = langsung kirim; keyboard = Enter / Simpan; tanpa JS = Simpan)
+//   2. popover Ubah (<details class="pop" data-lazy>): isi form edit lengkap (TaskEditForm: Simpan + Batal, lalu
+//      hapus) TIDAK dirender per kartu: forms.ts memuatnya saat dibuka dari /dashboard/tasks/<id>/form (href tautan
+//      cadangan + "/form"). Tanpa JS panel berisi tautan ke halaman form penuh /dashboard/tasks/<id>. Esc / klik di
+//      luar menutup (perubahan tetap, ditandai); hanya satu terbuka (forms.ts).
+// Semua form kembali ke URL halaman ini + #task-<id> (baris/kartu ini) lewat hidden `_back`;
+// hapus kembali ke `afterDelete` (anchor daftar).
+//   variant="card" → slot "lead" (penanggung jawab) + select tanpa bingkai + tombol ikon Ubah 28px (kartu kanban)
+//   variant="row"  → tombol "Ubah" tenang; kedua anak jadi sel grid baris (wrapper display: contents)
+import Icon from "./Icon.astro";
+import StatusSelect from "./StatusSelect.astro";
+import { editTaskHref, here } from "./ui";
+import { TASK_STATUS } from "@shared/constants";
+import type { Task } from "@shared/types";
+
+interface Props {
+  task: Pick<Task, "id" | "title" | "status">;
+  variant: "card" | "row";
+  /** anchor tujuan setelah tugas dihapus (mis. "h-tasks") */
+  afterDelete?: string;
+  /** papan Tugas (kolom dipotong): kembali dengan ?pin=<id> supaya kartu ini tetap tampil di kolom barunya */
+  pin?: boolean;
+}
+const { task: t, variant, afterDelete, pin = false } = Astro.props;
+const rowId = `task-${t.id}`;
+const url = new URL(Astro.url);
+if (pin) url.searchParams.set("pin", t.id);
+const back = here(url, rowId);
+---
+
+<div class:list={["task-actions", variant === "card" ? "is-card" : "is-row"]}>
+  <slot name="lead" />
+  <StatusSelect
+    action={`/api/tasks/${t.id}/status`}
+    back={back}
+    options={TASK_STATUS}
+    selected={t.status}
+    label={`Ubah status: ${t.title}`}
+    saveSr={` status ${t.title}`}
+    class="task-status"
+    selectClass={variant === "card" ? "input-sm" : undefined}
+  />
+  <details class="pop task-edit" name="task-edit" data-lazy={`te-${t.id}`}>
+    {
+      variant === "card" ? (
+        <summary class="btn-icon" aria-label={`Ubah tugas: ${t.title}`} title="Ubah tugas">
+          <Icon name="edit" />
+        </summary>
+      ) : (
+        <summary class="btn btn-sm btn-quiet">
+          <Icon name="edit" class="ic-sm" />
+          Ubah<span class="vh"> tugas: {t.title}</span>
+        </summary>
+      )
+    }
+    <div class="pop-panel" role="group" aria-label={`Ubah tugas: ${t.title}`}>
+      <a href={editTaskHref(t.id, back, afterDelete)} class="btn">Buka form ubah tugas</a>
+    </div>
+  </details>
+</div>

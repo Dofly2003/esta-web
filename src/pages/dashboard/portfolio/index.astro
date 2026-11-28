@@ -1,57 +1,199 @@
 ---
 import Dash from "../../../layouts/Dash.astro";
 import PageHeader from "../../../components/dash/PageHeader.astro";
+import Icon from "../../../components/dash/Icon.astro";
+import Badge from "../../../components/dash/Badge.astro";
+import ViewOnSite from "../../../components/dash/ViewOnSite.astro";
+import SectionHead from "../../../components/dash/SectionHead.astro";
+import EmptyState from "../../../components/dash/EmptyState.astro";
+import { confirmAttr, coverBg } from "../../../components/dash/ui";
 import { api } from "../../../lib/api";
-import type { PortfolioItem } from "@shared/types";
+import { MAX_FEATURED } from "@shared/constants";
+import type { PortfolioRow } from "@shared/types";
 
-const items = await api<PortfolioItem[]>(Astro, "/api/portfolio");
-const toggleCls = (on: boolean) =>
-  `badge border ${on ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-white text-zinc-400"}`;
+const items = await api<PortfolioRow[]>(Astro, "/api/portfolio");
+const nPublished = items.filter((i) => i.published).length;
+// unggulan yang benar-benar tampil di Beranda harus tayang
+const nFeatured = items.filter((i) => i.featured && i.published).length;
+const nDraft = items.length - nPublished;
 ---
 
 <Dash title="Portofolio">
-  <PageHeader title="Portofolio" subtitle="Karya yang tampil di website utama. Atur publikasi dan karya unggulan di Beranda.">
-    <a href="/portfolio" target="_blank" class="btn-ghost">Lihat di web ↗</a>
-    <a href="/dashboard/portfolio/new" class="btn-primary">+ Tambah karya</a>
-  </PageHeader>
+  <Fragment slot="actions">
+    <ViewOnSite href="/portfolio" />
+    <a href="/dashboard/portfolio/new" class="btn-primary btn-sm"><Icon name="plus" class="ic-sm" />Tambah karya</a>
+  </Fragment>
 
-  {
-    items.length === 0 ? (
-      <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">Belum ada karya.</p>
-    ) : (
-      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {items.map((item) => (
-          <div class="card overflow-hidden">
-            <a href={`/dashboard/portfolio/${item.id}`} class="block aspect-[16/9] overflow-hidden">
-              {item.imageUrl ? (
-                <img src={item.imageUrl} alt="" class="h-full w-full object-cover" loading="lazy" />
-              ) : (
-                <div class="flex h-full items-end p-4 text-lg font-extrabold text-white" style={{ background: `linear-gradient(135deg, ${item.coverColor}, #0b0d12)` }}>
-                  {item.title}
-                </div>
-              )}
-            </a>
-            <div class="p-4">
-              <a href={`/dashboard/portfolio/${item.id}`} class="font-semibold hover:text-accent">{item.title}</a>
-              <p class="text-xs text-zinc-500">{item.client} · {item.category} · {item.year}</p>
-              <div class="mt-3 flex gap-2">
-                {(["published", "featured"] as const).map((field) => {
-                  const on = item[field];
-                  return (
+  <PageHeader
+    title="Portofolio"
+    subtitle={`Karya yang tampil di website. Tayangkan karya, lalu pilih yang unggulan untuk Beranda (maks. ${MAX_FEATURED}, urutan terkecil dulu).`}
+  />
+
+  <section class="sec" aria-labelledby="h-pf">
+    <SectionHead id="h-pf" title="Semua karya" count={items.length} countSr="karya">
+      {
+        items.length > 0 && (
+          <span class="cap pf-sum">
+            <span class="status"><span class="dot tone-ok" aria-hidden="true" />{nPublished} tayang</span>
+            <span class="status"><span class="dot tone-neutral" aria-hidden="true" />{nDraft} draf</span>
+            <span class:list={["status", nFeatured > MAX_FEATURED && "v-warn"]}>
+              <Icon name="star" class="ic-sm" />
+              {nFeatured} unggulan (Beranda menampilkan maks. {MAX_FEATURED})
+            </span>
+          </span>
+        )
+      }
+    </SectionHead>
+
+    {
+      items.length === 0 ? (
+        <EmptyState icon="grid" title="Belum ada karya." text="Karya yang ditambahkan muncul di halaman Portofolio website setelah ditayangkan.">
+          <a slot="actions" href="/dashboard/portfolio/new" class="btn btn-sm">
+            <Icon name="plus" class="ic-sm" />
+            Tambah karya
+          </a>
+        </EmptyState>
+      ) : (
+        <ul class="pf-grid">
+          {items.map((item) => {
+            const back = `/dashboard/portfolio#pf-${item.id}`;
+            const hint = `pf-${item.id}-feat`;
+            return (
+              <li class="panel pf-card" id={`pf-${item.id}`} data-row tabindex="-1">
+                <a
+                  href={`/dashboard/portfolio/${item.id}`}
+                  class="pf-cover cover"
+                  tabindex="-1"
+                  aria-hidden="true"
+                  style={item.imageUrl ? undefined : { background: coverBg(item.coverColor) }}
+                >
+                  {item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" decoding="async" /> : <span class="cover-tag ell">{item.title}</span>}
+                </a>
+                <div class="pf-body">
+                  <div class="pf-title-row">
+                    <a href={`/dashboard/portfolio/${item.id}`} class="pf-title link-plain h3 ell">
+                      {item.title}
+                    </a>
+                    <a href={`/dashboard/portfolio/${item.id}`} class="btn-icon" aria-label={`Ubah ${item.title}`} title="Ubah">
+                      <Icon name="edit" />
+                    </a>
+                  </div>
+                  <p class="cap ell">{[item.client, item.category, item.year, `Urutan ${item.sortOrder}`].filter(Boolean).join(" · ")}</p>
+                  <p class="pf-state">
+                    <span class="vh">Status: </span>
+                    {item.published ? <Badge tone="ok">Tayang di website</Badge> : <Badge tone="neutral">Draf</Badge>}
+                  </p>
+                  <div class="pf-actions">
                     <form method="post" action={`/api/portfolio/${item.id}/toggle`}>
-                      <input type="hidden" name="field" value={field} />
-                      <input type="hidden" name="_back" value="/dashboard/portfolio" />
-                      <button class={toggleCls(on)} title={`Klik untuk ${on ? "matikan" : "aktifkan"}`}>
-                        {on ? "✓ " : ""}{field === "published" ? "Tayang" : "Unggulan"}
+                      <input type="hidden" name="field" value="published" />
+                      <input type="hidden" name="value" value={item.published ? "off" : "on"} />
+                      <input type="hidden" name="_back" value={back} />
+                      <button
+                        type="submit"
+                        class="btn btn-sm"
+                        data-pending-label={item.published ? "Menyembunyikan…" : "Menayangkan…"}
+                        {...confirmAttr(
+                          item.published
+                            ? `Sembunyikan “${item.title}” dari website publik?${item.featured ? " Tanda unggulan juga dilepas." : ""}`
+                            : `Tayangkan “${item.title}” di website publik?`,
+                        )}
+                      >
+                        {item.published ? "Sembunyikan" : "Tayangkan"}
+                        <span class="vh"> {item.title}</span>
                       </button>
                     </form>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
+                    <form method="post" action={`/api/portfolio/${item.id}/toggle`}>
+                      <input type="hidden" name="field" value="featured" />
+                      <input type="hidden" name="value" value={item.featured ? "off" : "on"} />
+                      <input type="hidden" name="_back" value={back} />
+                      <button
+                        type="submit"
+                        class="btn btn-sm"
+                        aria-pressed={item.featured ? "true" : "false"}
+                        disabled={!item.published}
+                        aria-describedby={item.published ? undefined : hint}
+                        data-pending-label="Menyimpan…"
+                        {...confirmAttr(
+                          item.featured
+                            ? `Lepas “${item.title}” dari unggulan Beranda?`
+                            : nFeatured >= MAX_FEATURED
+                              ? `Jadikan “${item.title}” unggulan? Sudah ada ${nFeatured} unggulan; Beranda hanya menampilkan ${MAX_FEATURED} karya unggulan dengan urutan terkecil.`
+                              : `Jadikan “${item.title}” unggulan di Beranda?`,
+                        )}
+                      >
+                        <Icon name={item.featured ? "star" : "plus"} class="ic-sm" />
+                        Unggulan<span class="vh"> di Beranda: {item.title}</span>
+                      </button>
+                    </form>
+                    {
+                      !item.published && (
+                        <span class="cap" id={hint}>
+                          Tayangkan dulu untuk menjadikannya unggulan.
+                        </span>
+                      )
+                    }
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )
+    }
+  </section>
 </Dash>
+
+<style>
+  /* grid kartu karya bergambar + status (Draf/Tayang) + aksi Tayangkan/Sembunyikan & Unggulan */
+  .pf-sum {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--s-4);
+  }
+  .pf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    gap: var(--s-4);
+  }
+  .pf-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  /* sampul: .cover (dashboard.css) + garis bawah; latar abu selagi gambar dimuat */
+  .pf-cover {
+    border-bottom: 1px solid var(--border);
+    background: var(--hover);
+  }
+  .pf-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    padding: var(--s-3) var(--s-4) var(--s-4);
+  }
+  .pf-title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin-right: calc(var(--s-2) * -1);
+  }
+  .pf-title {
+    flex: 1;
+    min-width: 0;
+  }
+  .pf-state {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+    margin-top: var(--s-1);
+  }
+  .pf-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+    margin-top: var(--s-2);
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--border);
+  }
+</style>

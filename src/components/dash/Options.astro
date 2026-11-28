@@ -1,0 +1,22 @@
+---
+// <option> dari peta label/status (@shared/constants) atau daftar { id, name } (user, proyek).
+// selected = nilai yang terpilih (kosongkan bila tidak ada).
+type Label = string | { label: string };
+
+interface Props {
+  from: Record<string, Label> | { id: string; name: string }[];
+  selected?: string | null;
+}
+const { from, selected } = Astro.props;
+const list = Array.isArray(from)
+  ? from.map((x) => [x.id, x.name] as const)
+  : Object.entries(from).map(([k, v]) => [k, typeof v === "string" ? v : v.label] as const);
+---
+
+{
+  list.map(([value, label]) => (
+    <option value={value} selected={selected === value}>
+      {label}
+    </option>
+  ))
+}

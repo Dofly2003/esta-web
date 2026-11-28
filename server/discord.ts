@@ -1,22 +1,43 @@
 // Kirim notifikasi ke channel Discord lewat webhook.
 // Webhook diatur admin di Dashboard → Tim & Akun (disimpan di tabel settings),
-// atau lewat env DISCORD_WEBHOOK_URL sebagai cadangan.
+// atau lewat env DISCORD_WEBHOOK_URL sebagai cadangan selama setelan itu belum pernah disimpan di dashboard.
 import { settings } from "./repo";
-import type { User } from "../shared/types";
-import { PRIORITY, PROJECT_STATUS, PROJECT_TYPES } from "../shared/constants";
-import { fmtDate } from "../shared/format";
+import type { Inquiry, Project, Task, User } from "../shared/types";
+import { labelOf, PRIORITY, PROJECT_STATUS, PROJECT_TYPES } from "../shared/constants";
+import { cutText, fmtDate } from "../shared/format";
+import { envOf } from "./env";
+import { logError } from "./log";
+import { isWebhookUrl } from "./schemas/fields";
 
-const COLORS = { HIGH: 0xe11d48, MEDIUM: 0x6d5efc, LOW: 0x64748b, PROJECT: 0x22d3ee, TEST: 0x10b981 };
+export { isWebhookUrl };
 
-export function siteUrl() {
-  if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/$/, "");
-  return process.env.NODE_ENV === "production"
-    ? `http://localhost:${process.env.PORT || 3000}`
-    : "http://localhost:4321";
-}
+const COLORS = {
+  HIGH: 0xe11d48,
+  MEDIUM: 0x6d5efc,
+  LOW: 0x64748b,
+  PROJECT: 0x22d3ee,
+  TEST: 0x10b981,
+  INQUIRY: 0x38bdf8,
+};
 
-export function isWebhookUrl(url: string) {
-  return /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(url);
+/** Batas waktu kirim notifikasi yang ditunggu request (tugas, PJ proyek). Di serverless (Vercel) kiriman yang
+ * tidak ditunggu bisa hilang saat instance dibekukan, jadi semua notifikasi ditunggu dengan batas pendek. */
+export const NOTIFY_TIMEOUT_MS = 4000;
+/** Paling lama sekian notifikasi tugas / PJ proyek ditunggu request simpan (kiriman tetap berjalan sampai
+ * NOTIFY_TIMEOUT_MS; Discord yang lambat tidak lagi memperlambat Simpan sampai 4 detik) */
+export const NOTIFY_CAP_MS = 2500;
+/** Batas untuk notifikasi inquiry baru dari form Kontak publik (form tetap cepat) */
+export const INQUIRY_NOTIFY_CAP_MS = 2500;
+/** Pesan uji dari halaman Tim: admin menunggu hasilnya, jadi boleh lebih lama */
+const TEST_TIMEOUT_MS = 8000;
+
+/** Alamat website untuk link di pesan: SITE_URL, lalu domain produksi Vercel (env sistem Vercel), lalu localhost */
+function siteUrl() {
+  const site = envOf("SITE_URL");
+  if (site) return site.replace(/\/$/, "");
+  const vercel = envOf("VERCEL_PROJECT_PRODUCTION_URL") || envOf("VERCEL_URL");
+  if (vercel) return `https://${vercel.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
+  return envOf("NODE_ENV") === "production" ? `http://localhost:${envOf("PORT")}` : "http://localhost:4321";
 }
 
 /** Teks mention: <@id> jika Discord ID diisi, kalau tidak nama biasa (tebal) */
@@ -24,6 +45,14 @@ function who(user: Pick<User, "name" | "discordId"> | null | undefined) {
   if (!user) return "—";
   return user.discordId ? `<@${user.discordId}>` : `**${user.name}**`;
 }
+/** Discord ID yang boleh di-mention (hanya orang yang dimaksud) */
+const mentions = (user: Pick<User, "discordId">) => (user.discordId ? [user.discordId] : []);
+const deadline = (d: string | null) => (d ? fmtDate(d) : "Tidak ada");
+const projectUrl = (id: string) => `${siteUrl()}/dashboard/projects/${id}`;
+/** Link langsung ke baris tugas (detail proyek menggulir & memfokus #task-<id>) */
+const taskUrl = (projectId: string, taskId: string) => `${projectUrl(projectId)}#task-${taskId}`;
+/** Teks dari luar (nama, judul) tanpa karakter markdown Discord yang bisa merusak format */
+const plain = (v: string, max = 200) => cutText(v.replace(/[*_`~|>\\]/g, ""), max) || "—";
 
 type Embed = {
   title: string;
@@ -35,7 +64,13 @@ type Embed = {
   timestamp?: string;
 };
 
-async function send(content: string, embed: Embed, mentionIds: string[], webhookOverride?: string) {
+async function send(
+  content: string,
+  embed: Embed,
+  mentionIds: string[],
+  webhookOverride?: string,
+  timeoutMs = NOTIFY_TIMEOUT_MS,
+) {
   const cfg = await settings.discord();
   const url = webhookOverride ?? cfg.webhookUrl;
   if (!url || (!webhookOverride && !cfg.enabled)) return { ok: false, reason: "off" as const };
@@ -49,86 +84,160 @@ async function send(content: string, embed: Embed, mentionIds: string[], webhook
       // hanya mention user yang dimaksud; @everyone/@role tidak pernah diaktifkan
       allowed_mentions: { parse: [], users: mentionIds },
     }),
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`Discord ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return { ok: true as const };
 }
 
-/** Tidak pernah melempar error: kegagalan Discord tidak boleh menggagalkan simpan data */
-async function safe(fn: () => Promise<unknown>) {
-  try {
-    await fn();
-  } catch (e) {
-    console.error("[discord] gagal kirim notifikasi:", e);
-  }
+/** Tidak pernah melempar error: kegagalan Discord tidak boleh menggagalkan simpan data.
+ * `capMs` = paling lama sekian ditunggu (termasuk membaca setelan); lewat itu pemanggil lanjut dan
+ * kiriman dicatat di log sebagai terlambat. */
+async function safe(fn: () => Promise<unknown>, capMs?: number) {
+  const work = fn().then(
+    () => true,
+    (e) => {
+      // hanya ringkasan error: error fetch Bun membawa URL webhook lengkap (dengan token)
+      logError("[discord] gagal kirim notifikasi:", e);
+      return true;
+    },
+  );
+  if (!capMs) return void (await work);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cap = new Promise<false>((resolve) => (timer = setTimeout(() => resolve(false), capMs)));
+  const finished = await Promise.race([work, cap]);
+  clearTimeout(timer);
+  if (!finished) logError(`[discord] notifikasi melewati batas ${capMs} ms, tidak ditunggu lagi`);
 }
 
 export function notifyTaskAssigned(opts: {
-  task: { id: string; title: string; description?: string; priority: string; dueDate: string | null };
-  project: { id: string; name: string; client: string };
+  task: Pick<Task, "id" | "title" | "priority" | "dueDate"> & { description?: string };
+  project: Pick<Project, "id" | "name" | "client">;
   assignee: User;
   by: User;
 }) {
   const { task, project, assignee, by } = opts;
   const fields = [
     { name: "📁 Proyek", value: `${project.name}\n${project.client}`, inline: true },
-    { name: "📅 Deadline", value: task.dueDate ? fmtDate(task.dueDate) : "Tidak ada", inline: true },
-    { name: "⚡ Prioritas", value: PRIORITY[task.priority]?.label ?? task.priority, inline: true },
+    { name: "📅 Deadline", value: deadline(task.dueDate), inline: true },
+    { name: "⚡ Prioritas", value: labelOf(PRIORITY, task.priority), inline: true },
   ];
-  return safe(() =>
-    send(
-      `📌 ${who(assignee)}, ada tugas baru untuk kamu!`,
-      {
-        title: task.title,
-        url: `${siteUrl()}/dashboard/projects/${project.id}`,
-        description: task.description ? task.description.slice(0, 500) : undefined,
-        color: COLORS[task.priority as keyof typeof COLORS] ?? COLORS.MEDIUM,
-        fields,
-        footer: { text: `Ditugaskan oleh ${by.name}` },
-      },
-      assignee.discordId ? [assignee.discordId] : [],
-    ),
+  return safe(
+    () =>
+      send(
+        `📌 ${who(assignee)}, ada tugas baru untuk Anda.`,
+        {
+          title: task.title,
+          url: taskUrl(project.id, task.id),
+          description: task.description ? task.description.slice(0, 500) : undefined,
+          color: COLORS[task.priority as keyof typeof COLORS] ?? COLORS.MEDIUM,
+          fields,
+          footer: { text: `Ditugaskan oleh ${by.name}` },
+        },
+        mentions(assignee),
+      ),
+    NOTIFY_CAP_MS,
   );
 }
 
 export function notifyProjectLead(opts: {
-  project: { id: string; name: string; client: string; type: string; status: string; dueDate: string | null };
+  project: Pick<Project, "id" | "name" | "client" | "type" | "status" | "dueDate">;
   lead: User;
   by: User;
 }) {
   const { project, lead, by } = opts;
-  return safe(() =>
-    send(
-      `🧭 ${who(lead)}, kamu sekarang **PJ (penanggung jawab)** proyek ini.`,
-      {
-        title: project.name,
-        url: `${siteUrl()}/dashboard/projects/${project.id}`,
-        color: COLORS.PROJECT,
-        fields: [
-          { name: "🏢 Klien", value: project.client, inline: true },
-          { name: "🧩 Jenis", value: PROJECT_TYPES[project.type] ?? project.type, inline: true },
-          { name: "📅 Deadline", value: project.dueDate ? fmtDate(project.dueDate) : "Tidak ada", inline: true },
-          { name: "📊 Status", value: PROJECT_STATUS[project.status]?.label ?? project.status, inline: true },
-        ],
-        footer: { text: `Ditetapkan oleh ${by.name}` },
-      },
-      lead.discordId ? [lead.discordId] : [],
-    ),
+  return safe(
+    () =>
+      send(
+        `🧭 ${who(lead)}, Anda sekarang **PJ (penanggung jawab)** proyek ini.`,
+        {
+          title: project.name,
+          url: projectUrl(project.id),
+          color: COLORS.PROJECT,
+          fields: [
+            { name: "🏢 Klien", value: project.client, inline: true },
+            { name: "🧩 Jenis", value: labelOf(PROJECT_TYPES, project.type), inline: true },
+            { name: "📅 Deadline", value: deadline(project.dueDate), inline: true },
+            { name: "📊 Status", value: labelOf(PROJECT_STATUS, project.status), inline: true },
+          ],
+          footer: { text: `Ditetapkan oleh ${by.name}` },
+        },
+        mentions(lead),
+      ),
+    NOTIFY_CAP_MS,
+  );
+}
+
+/** Beberapa tugas sekaligus (daftar ditempel, satu baris = satu tugas) untuk satu orang: SATU pesan ringkasan */
+export function notifyTasksAssigned(opts: {
+  tasks: Pick<Task, "id" | "title" | "priority" | "dueDate">[];
+  project: Pick<Project, "id" | "name" | "client">;
+  assignee: User;
+  by: User;
+}) {
+  const { tasks, project, assignee, by } = opts;
+  const lines = tasks.slice(0, 15).map((t) => `• [${plain(t.title, 120)}](${taskUrl(project.id, t.id)})`);
+  if (tasks.length > lines.length) lines.push(`… dan ${tasks.length - lines.length} lainnya`);
+  return safe(
+    () =>
+      send(
+        `📌 ${who(assignee)}, ada ${tasks.length} tugas baru untuk Anda.`,
+        {
+          title: `${project.name}: ${tasks.length} tugas baru`,
+          url: projectUrl(project.id),
+          description: lines.join("\n").slice(0, 3900),
+          color: COLORS.MEDIUM,
+          fields: [{ name: "📁 Proyek", value: `${project.name}\n${project.client}`, inline: true }],
+          footer: { text: `Ditugaskan oleh ${by.name}` },
+        },
+        mentions(assignee),
+      ),
+    NOTIFY_CAP_MS,
+  );
+}
+
+/** Inquiry baru dari form Kontak publik. Ditunggu paling lama `capMs` (default INQUIRY_NOTIFY_CAP_MS) agar form
+ * publik tetap cepat; kegagalan / keterlambatan hanya dicatat di log. Mengikuti setelan aktif/webhook. */
+export function notifyInquiry(
+  q: Pick<Inquiry, "id" | "name" | "email" | "company" | "service" | "budget" | "message">,
+  capMs = INQUIRY_NOTIFY_CAP_MS,
+) {
+  const fields = [
+    { name: "🏢 Bisnis", value: plain(q.company || "—", 100), inline: true },
+    { name: "🧩 Layanan", value: plain(q.service || "—", 100), inline: true },
+    { name: "💰 Budget", value: plain(q.budget || "—", 60), inline: true },
+  ];
+  return safe(
+    () =>
+      send(
+        `📨 Inquiry baru dari **${plain(q.name, 80)}**. Website menjanjikan balasan maks. 1×24 jam.`,
+        {
+          title: `Inquiry: ${plain(q.name, 80)}${q.company ? ` · ${plain(q.company, 80)}` : ""}`,
+          url: `${siteUrl()}/dashboard/inbox?status=NEW&inq=${encodeURIComponent(q.id)}#inq-${q.id}`,
+          description: plain(q.message, 500),
+          color: COLORS.INQUIRY,
+          fields,
+        },
+        [],
+        undefined,
+        capMs,
+      ),
+    capMs,
   );
 }
 
 /** Pesan uji dari halaman Tim & Akun. Melempar error agar admin tahu jika gagal. */
 export function sendTest(webhookUrl: string, by: User) {
   return send(
-    `✅ Notifikasi ESTA sudah tersambung. ${who(by)}, kamu akan di-mention di sini saat ada tugas.`,
+    `✅ Notifikasi ESTA sudah tersambung. ${who(by)}, Anda akan di-mention di sini saat ada tugas.`,
     {
       title: "Tes notifikasi ESTA",
       url: `${siteUrl()}/dashboard`,
       description: "Pesan ini dikirim dari Dashboard → Tim & Akun.",
       color: COLORS.TEST,
     },
-    by.discordId ? [by.discordId] : [],
+    mentions(by),
     webhookUrl,
+    TEST_TIMEOUT_MS,
   );
 }

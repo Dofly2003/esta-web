@@ -1,6 +1,11 @@
 ---
+import "../styles/site.css";
 import Base from "./Base.astro";
-import Logo from "../components/Logo.astro";
+import Mark from "../components/Mark.astro";
+import Heading from "../components/Heading.astro";
+import RollButton from "../components/RollButton.astro";
+import PixelCorner from "../components/PixelCorner.astro";
+import Orb from "../components/Orb.astro";
 import { BRAND } from "@shared/constants";
 
 interface Props {
@@ -11,57 +16,165 @@ const nav = [
   { href: "/", label: "Beranda" },
   { href: "/#layanan", label: "Layanan" },
   { href: "/portfolio", label: "Portofolio" },
+  { href: "/#proses", label: "Proses" },
   { href: "/contact", label: "Kontak" },
 ];
+const year = new Date().getFullYear();
+// halaman aktif untuk aria-current di menu (link jangkar "/#…" tidak dianggap halaman)
+const rawPath = Astro.url.pathname;
+const path = rawPath.length > 1 && rawPath.endsWith("/") ? rawPath.slice(0, -1) : rawPath;
+const isCurrent = (href: string) => !href.includes("#") && (href === "/" ? path === "/" : path.startsWith(href));
 ---
 
 <Base {...Astro.props}>
-  <div class="min-h-screen bg-ink text-white">
-    <header class="sticky top-0 z-40 border-b border-white/5 bg-ink/80 backdrop-blur">
-      <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
-        <Logo />
-        <nav class="hidden items-center gap-8 text-sm text-white/70 md:flex">
-          {nav.map((n) => <a href={n.href} class="hover:text-white">{n.label}</a>)}
-        </nav>
-        <div class="flex items-center gap-2">
-          <a href="/login" class="hidden text-sm text-white/60 hover:text-white sm:block">Login Tim</a>
-          <a href="/contact" class="btn-primary rounded-full">Mulai Proyek</a>
-        </div>
-      </div>
-      <nav class="flex gap-5 overflow-x-auto px-4 pb-3 text-sm text-white/70 md:hidden">
-        {nav.map((n) => <a href={n.href} class="shrink-0 hover:text-white">{n.label}</a>)}
-        <a href="/login" class="shrink-0 hover:text-white">Login Tim</a>
-      </nav>
+  <div class="min-h-screen overflow-x-clip bg-ink text-white">
+    <a
+      href="#main"
+      class="mono fixed top-2 left-2 z-[70] -translate-y-24 bg-sky px-4 py-3 text-ink transition-transform focus-visible:translate-y-0"
+    >
+      Lewati ke konten
+    </a>
+    <!-- ===== tab menu (kiri atas) ===== -->
+    <header class="fixed top-0 left-0 z-50 flex items-start">
+      <a href="/" class="flex h-11 items-center gap-2 bg-white pr-4 pl-4 text-ink" aria-label="ESTA Studio, ke beranda">
+        <Mark size={18} />
+        <span translate="no" class="text-[17px] leading-none font-semibold tracking-[-0.06em]">ESTA <span class="font-pixel font-normal tracking-[-0.04em] text-azure">Studio</span></span>
+      </a>
+      <button
+        type="button"
+        data-menu-open
+        aria-expanded="false"
+        aria-controls="site-menu"
+        class="mono flex h-11 items-center gap-2.5 border-l border-ink/10 bg-white px-4 text-ink"
+      >
+        <span class="flex w-4 flex-col gap-[3px]" aria-hidden="true">
+          <span class="h-px w-full bg-ink"></span><span class="h-px w-full bg-ink"></span>
+        </span>
+        Menu
+      </button>
+      <span class="h-7 w-7 bg-white" aria-hidden="true"></span>
     </header>
 
-    <main><slot /></main>
+    <a
+      href="/contact"
+      class="mono fixed top-0 right-0 z-50 flex h-11 items-center gap-2 bg-ink/70 px-3 text-white/80 backdrop-blur transition hover:text-white sm:px-4"
+    >
+      <span class="h-1.5 w-1.5 bg-sky" aria-hidden="true"></span> Konsultasi<span class="hidden sm:inline"> gratis</span>
+    </a>
 
-    <footer class="border-t border-white/5">
-      <div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-4">
-        <div class="md:col-span-2">
-          <Logo />
-          <p class="mt-4 max-w-sm text-sm text-white/50">
-            {BRAND.tagline} yang membantu bisnis tumbuh lewat website, aplikasi web, dan mobile app.
-          </p>
+    <!-- ===== overlay menu ===== -->
+    <div id="site-menu" data-menu class="grid-bg fixed inset-0 z-[60] hidden overflow-y-auto overscroll-contain bg-ink" role="dialog" aria-modal="true" aria-label="Menu">
+      <div class="flex h-full flex-col">
+        <div class="flex items-start justify-between">
+          <span class="flex h-11 items-center gap-2 bg-white px-4 text-ink">
+            <Mark size={18} />
+            <span translate="no" class="text-[17px] leading-none font-semibold tracking-[-0.06em]">ESTA <span class="font-pixel font-normal tracking-[-0.04em] text-azure">Studio</span></span>
+          </span>
+          <button type="button" data-menu-close class="mono flex h-11 items-center gap-2 bg-white px-4 text-ink">
+            Tutup <span aria-hidden="true">✕</span>
+          </button>
         </div>
-        <div class="text-sm">
-          <p class="mb-3 font-semibold">Navigasi</p>
-          <ul class="space-y-2 text-white/50">
-            {nav.map((n) => <li><a href={n.href} class="hover:text-white">{n.label}</a></li>)}
-          </ul>
-        </div>
-        <div class="text-sm">
-          <p class="mb-3 font-semibold">Kontak</p>
-          <ul class="space-y-2 text-white/50">
-            <li>{BRAND.email}</li>
-            <li>{BRAND.phone}</li>
-            <li>{BRAND.address}</li>
-          </ul>
+        <nav class="container-x flex flex-1 flex-col justify-center gap-1">
+          {
+            nav.map((n, i) => (
+              <a data-menu-item href={n.href} aria-current={isCurrent(n.href) ? "page" : undefined} class="group flex items-baseline gap-5 py-1">
+                <span class="mono-dim w-16 shrink-0">-- {String(i + 1).padStart(3, "0")}.</span>
+                <span class="relative text-[clamp(2.5rem,7vw,5.5rem)] leading-[1] font-normal tracking-[-0.06em]">
+                  <span class="absolute inset-0 origin-left scale-x-0 bg-white transition-transform duration-300 group-hover:scale-x-100 group-focus-visible:scale-x-100 group-aria-[current=page]:scale-x-100" />
+                  <span class="relative px-[0.1em] transition-colors duration-300 group-hover:text-ink group-focus-visible:text-ink group-aria-[current=page]:text-ink">{n.label}</span>
+                </span>
+              </a>
+            ))
+          }
+        </nav>
+        <div data-menu-item class="container-x mono-dim flex flex-wrap justify-between gap-4 py-8">
+          <span class="inline-flex min-h-11 items-center">[ {BRAND.address} ]</span>
+          <a href={BRAND.instagram} target="_blank" rel="noreferrer" class="inline-flex min-h-11 items-center hover:text-white">[ {BRAND.instagramHandle} ]</a>
+          <a href="/login" class="inline-flex min-h-11 items-center hover:text-white">[ Login tim ]</a>
         </div>
       </div>
-      <p class="border-t border-white/5 py-6 text-center text-xs text-white/40">
-        © {new Date().getFullYear()} {BRAND.name}. All rights reserved.
-      </p>
+    </div>
+
+    <main id="main" tabindex="-1" class="outline-none"><slot /></main>
+
+    <!-- ===== footer ===== -->
+    <footer data-section="footer" class="grid-bg relative isolate overflow-hidden border-t border-white/5">
+      <PixelCorner corner="bl" from="#5ec8f2" to="#4f86e0" class="-z-10" />
+      <PixelCorner corner="br" from="#5a5fd8" to="#5ec8f2" class="-z-10" />
+      <Orb icon="mark" size={110} class="bottom-[18%] left-[6%] hidden md:grid" />
+      <Orb icon="spark" size={96} class="top-[18%] right-[7%] hidden md:grid" />
+
+      <div class="container-x mono-dim flex flex-wrap justify-between gap-4 pt-16">
+        <span>[ {BRAND.city} ]</span>
+        <span class="hidden sm:inline">[ Website · Software ]</span>
+        <span>[ {BRAND.name} ]</span>
+      </div>
+
+      <div class="container-x grid gap-12 py-24 md:grid-cols-[1.4fr_1fr] md:items-end md:py-32">
+        <div>
+          <Heading
+            tag="#ESTA"
+            size="lg"
+            lines={[
+              { text: "Mulai", font: "sans", indent: "1.2em" },
+              { text: "Proyekmu.", font: "pixel" },
+            ]}
+          />
+          <div class="mt-10" data-fade><RollButton href="/contact" label="Konsultasi" /></div>
+        </div>
+        <div class="space-y-8" data-fade>
+          <p class="max-w-xs text-white/70">
+            Ceritakan idemu lewat form konsultasi. Kami bantu susun kebutuhan, estimasi waktu, dan biaya, gratis tanpa
+            komitmen.
+          </p>
+          <nav aria-label="Navigasi footer">
+            <ul class="mono grid grid-cols-2 gap-x-6 text-white/70">
+              {
+                nav.map((n) => (
+                  <li>
+                    <a href={n.href} class="inline-flex min-h-11 items-center hover:text-white">
+                      {n.label}
+                    </a>
+                  </li>
+                ))
+              }
+            </ul>
+          </nav>
+          <div class="flex gap-2">
+            <a
+              href={BRAND.instagram}
+              target="_blank"
+              rel="noreferrer"
+              class="grid h-11 w-11 place-items-center border border-white/15 text-white/80 transition hover:bg-white hover:text-ink"
+              aria-label={`Instagram ${BRAND.instagramHandle}`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r="1" fill="currentColor" />
+              </svg>
+            </a>
+            <a href="/contact" class="mono grid h-11 place-items-center border border-white/15 px-4 text-white/80 transition hover:bg-white hover:text-ink">
+              Form kontak
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="container-x mono flex flex-wrap items-center justify-between gap-3 border-t border-white/10 py-6 text-[11px] text-white/60">
+        <span>© {year} {BRAND.name}. Hak cipta dilindungi.</span>
+        <span>{BRAND.address}</span>
+        <a href="/login" class="inline-flex min-h-11 items-center hover:text-white">Login tim</a>
+      </div>
     </footer>
   </div>
 </Base>
+
+<script>
+  import "../scripts/motion";
+</script>
+
+<style is:global>
+  /* situs publik bertema gelap: scrollbar & kontrol native ikut gelap */
+  html {
+    color-scheme: dark;
+  }
+</style>

@@ -1,41 +1,158 @@
 ---
+// Login tim: memakai sistem desain dashboard (src/styles/dashboard.css) dan tema dashboard
+// (Sistem / Gelap / Terang dari localStorage, diterapkan sebelum paint lewat ThemeScript).
+// Setelah gagal login, email diisi ulang dari sessionStorage (forms.ts, data-keep; password tidak pernah disimpan).
+import "../styles/dash.css";
 import Base from "../layouts/Base.astro";
-import Logo from "../components/Logo.astro";
+import Brand from "../components/dash/Brand.astro";
+import Field from "../components/dash/Field.astro";
+import Icon from "../components/dash/Icon.astro";
+import Notice from "../components/dash/Notice.astro";
+import ThemeScript from "../components/dash/ThemeScript.astro";
 import { api } from "../lib/api";
+import { AUTH_INFO_ERRS, flashText } from "@shared/messages";
+import { isEmail, safeNext } from "@shared/format";
 
-// Sudah login → langsung ke dashboard
+const sp = Astro.url.searchParams;
+// tujuan setelah masuk: hanya /dashboard… (dinormalisasi; selain itu ke Ringkasan)
+const next = safeNext(sp.get("next")) ?? "/dashboard";
+
+// Sudah login → langsung ke tujuan (next)
 try {
   await api(Astro, "/api/me");
-  return Astro.redirect("/dashboard");
+  return Astro.redirect(next);
 } catch {}
 
-const next = Astro.url.searchParams.get("next") ?? "/dashboard";
-const err = Astro.url.searchParams.get("err");
+// hanya kode pesan yang dikenal (teks tetap dari shared/messages.ts)
+const errCode = sp.get("err") ?? "";
+const errText = flashText("err", errCode);
+// "silakan masuk" / "sesi berakhir" = info (bukan kesalahan isian): password tidak ditandai salah
+const info = errText && AUTH_INFO_ERRS.includes(errCode) ? errText : null;
+const err = info ? null : errText;
+const errAttrs = err ? { "aria-describedby": "login-err" } : {};
+// tanpa JS: email dari redirect gagal login (password tidak pernah dibawa)
+const emailParam = sp.get("email") ?? "";
+const email = emailParam.length <= 200 && isEmail(emailParam) ? emailParam : "";
+// nama halaman tujuan untuk pesan "kembali ke …"
+const SECTIONS: [string, string][] = [
+  ["/dashboard/projects", "Proyek"],
+  ["/dashboard/tasks", "Tugas"],
+  ["/dashboard/portfolio", "Portofolio"],
+  ["/dashboard/inbox", "Inbox"],
+  ["/dashboard/team", "Tim & Akun"],
+];
+const nextPath = next.split(/[?#]/)[0]!;
+const nextLabel = nextPath === "/dashboard" ? null : (SECTIONS.find(([p]) => nextPath.startsWith(p))?.[1] ?? null);
 ---
 
-<Base title="Login Tim">
-  <div class="relative grid min-h-screen place-items-center overflow-hidden bg-ink px-4">
-    <div class="pointer-events-none absolute -top-40 left-1/2 h-[480px] w-[720px] -translate-x-1/2 rounded-full bg-accent/25 blur-[120px]"></div>
-    <div class="relative w-full max-w-sm">
-      <div class="mb-8 flex justify-center"><Logo /></div>
-      <div class="rounded-2xl border border-white/10 bg-ink-2 p-6 shadow-2xl">
-        <h1 class="text-lg font-bold text-white">Masuk ke Dashboard</h1>
-        <p class="mb-6 mt-1 text-sm text-white/50">Tracking proyek, tugas, dan portofolio.</p>
-        <form method="post" action="/api/auth/login" class="space-y-4">
+<Base title="Masuk" dash>
+  <ThemeScript slot="head" />
+
+  <main class="login">
+    <div class="login-wrap">
+      <p class="login-brand"><Brand size="lg" /></p>
+
+      <section class="panel" aria-labelledby="login-h">
+        <div class="panel-head login-head">
+          <h1 class="h1" id="login-h">Masuk</h1>
+          <p class="t-2">Dashboard tim ESTA: proyek, tugas, dan portofolio.</p>
+        </div>
+        <form method="post" action="/api/auth/login" class="panel-body" data-keep="login">
           <input type="hidden" name="next" value={next} />
-          <div>
-            <label class="mb-1.5 block text-sm text-white/70" for="email">Email</label>
-            <input id="email" name="email" type="email" required autocomplete="email" class="input-dark" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-sm text-white/70" for="password">Password</label>
-            <input id="password" name="password" type="password" required autocomplete="current-password" class="input-dark" />
-          </div>
-          {err && <p class="text-sm text-rose-400">{err}</p>}
-          <button type="submit" class="btn-primary w-full rounded-xl py-3">Masuk</button>
+          {
+            info && (
+              <Notice tone="info" id="login-info" data-flash="info">
+                {info}
+                {nextLabel && <> Setelah masuk, Anda kembali ke halaman {nextLabel}.</>}
+              </Notice>
+            )
+          }
+          <Field id="email" label="Email">
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              autocomplete="username"
+              spellcheck="false"
+              autocapitalize="none"
+              autofocus={!email && !err}
+              value={email || undefined}
+              class="input"
+              {...errAttrs}
+            />
+          </Field>
+          <Field id="password" label="Password">
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              autocomplete="current-password"
+              autofocus={!!email || !!err}
+              class="input"
+              aria-invalid={err ? "true" : undefined}
+              {...errAttrs}
+            />
+          </Field>
+          {
+            err && (
+              <Notice tone="crit" id="login-err" data-flash="err">
+                {err}
+              </Notice>
+            )
+          }
+          <button type="submit" class="btn-primary login-submit" data-pending-label="Masuk…">Masuk</button>
+          <p class="cap">Lupa password? Minta admin tim untuk reset.</p>
         </form>
-      </div>
-      <p class="mt-6 text-center text-xs text-white/40"><a href="/" class="hover:text-white">← Kembali ke website</a></p>
+      </section>
+
+      <p class="login-back">
+        <a href="/" class="btn btn-quiet"><Icon name="arrow-l" class="ic-sm" />Kembali ke website</a>
+      </p>
     </div>
-  </div>
+  </main>
 </Base>
+
+<script>
+  import { enhance } from "../components/dash/forms";
+  enhance();
+</script>
+
+<style>
+  .login {
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: var(--s-10) var(--s-4);
+  }
+  .login-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-6);
+    width: 100%;
+    max-width: 380px;
+  }
+  .login-brand {
+    display: flex;
+    justify-content: center;
+  }
+  /* kartu terlihat juga di tema terang (#ebebeb di putih hampir tak tampak) */
+  .login .panel {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-sm);
+  }
+  .login-head {
+    padding-top: var(--s-5);
+    padding-bottom: var(--s-4);
+  }
+  .login-submit {
+    width: 100%;
+    margin-top: var(--s-1);
+  }
+  .login-back {
+    display: flex;
+    justify-content: center;
+  }
+</style>

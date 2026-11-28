@@ -2,34 +2,23 @@
 //   bun run db:seed            → hanya jika belum ada akun
 //   bun run db:seed --force    → hapus semua data lalu isi ulang
 // Semua akun contoh memakai SEED_PASSWORD dari .env.
-import { client, ready } from "../server/db";
 import { hashPassword } from "../server/auth";
-import { inquiries, portfolio, projects, tasks, users } from "../server/repo";
+import { inquiries, portfolio, projects, tasks, users, wipeAll } from "../server/repo";
+import { MIN_PASSWORD } from "../shared/constants";
+import { dayOffset as day } from "../shared/format";
+import { openForWrite } from "./_db";
 
-const force = process.argv.includes("--force");
-await ready;
-if ((await users.count()) > 0 && !force) {
-  console.error("Database sudah berisi data. Tambahkan --force untuk menghapus dan mengisi ulang.");
-  process.exit(1);
-}
+const force = await openForWrite("mengisi ulang");
 const password = process.env.SEED_PASSWORD;
-if (!password || password.length < 8) {
+if (!password || password.length < MIN_PASSWORD) {
   console.error("Isi SEED_PASSWORD (min. 8 karakter) di .env dulu.");
   process.exit(1);
 }
 
-const day = (offset: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
 const hash = await hashPassword(password);
 
 {
-  if (force)
-    await client.executeMultiple(
-      "DELETE FROM tasks; DELETE FROM portfolio; DELETE FROM projects; DELETE FROM inquiries; DELETE FROM sessions; DELETE FROM users; DELETE FROM settings;",
-    );
+  if (force) await wipeAll();
 
   const admin = await users.create({ name: "Admin ESTA", email: "admin@esta.id", role: "ADMIN", passwordHash: hash });
   const rina = await users.create({ name: "Rina Designer", email: "rina@esta.id", role: "MEMBER", passwordHash: hash });

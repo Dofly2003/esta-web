@@ -1,0 +1,43 @@
+---
+// Meta warna + skrip tema dashboard sebelum paint pertama. Dipakai di slot "head" Base
+// (Dash.astro dan halaman login): <ThemeScript slot="head" />. Menyediakan window.EstaTheme
+// (get/set) untuk tombol tema di sidebar; pilihan disimpan di localStorage["esta-dash-theme"].
+// DARK / LIGHT di skrip dan meta theme-color = nilai --canvas di dashboard.css (light-dark): ubah bersamaan.
+---
+
+<meta name="color-scheme" content="dark light" />
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<script is:inline>
+  /* Tema sebelum paint pertama: Sistem (tanpa atribut), Gelap, atau Terang — disimpan per perangkat. */
+  (function () {
+    var KEY = "esta-dash-theme", DARK = "#0a0a0a", LIGHT = "#ffffff";
+    function apply(t) {
+      var d = document.documentElement;
+      var metas = document.querySelectorAll('meta[name="theme-color"]');
+      var cs = document.querySelector('meta[name="color-scheme"]');
+      if (t === "dark" || t === "light") d.setAttribute("data-theme", t);
+      else { d.removeAttribute("data-theme"); t = "system"; }
+      if (cs) cs.setAttribute("content", t === "system" ? "dark light" : t);
+      for (var i = 0; i < metas.length; i++) {
+        var forDark = /dark/.test(metas[i].getAttribute("media") || "");
+        metas[i].setAttribute("content", t === "dark" ? DARK : t === "light" ? LIGHT : forDark ? DARK : LIGHT);
+      }
+      return t;
+    }
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    window.EstaTheme = {
+      get: function () {
+        var a = document.documentElement.getAttribute("data-theme");
+        return a === "dark" || a === "light" ? a : "system";
+      },
+      set: function (t) {
+        t = apply(t);
+        try { if (t === "system") localStorage.removeItem(KEY); else localStorage.setItem(KEY, t); } catch (e) {}
+        return t;
+      },
+    };
+    apply(saved);
+  })();
+</script>

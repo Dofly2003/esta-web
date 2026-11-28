@@ -1,0 +1,41 @@
+---
+// Judul berblok highlight putih. Setiap baris = satu blok yang dibuka dari kiri
+// ke kanan (clip-path) saat masuk layar. Baris bisa memakai huruf sans atau pixel.
+export type HeadingLine = { text: string; font?: "sans" | "pixel"; indent?: string };
+
+interface Props {
+  lines: HeadingLine[];
+  tag?: string;
+  as?: "h1" | "h2" | "h3";
+  size?: "xl" | "lg" | "md";
+  align?: "left" | "center";
+  class?: string;
+}
+const { lines, tag, as: As = "h2", size = "lg", align = "left", class: className = "" } = Astro.props;
+const fs = {
+  xl: "text-[clamp(3.25rem,10vw,8.5rem)]",
+  lg: "text-[clamp(2.75rem,7.5vw,6.5rem)]",
+  md: "text-[clamp(2.25rem,5vw,4rem)]",
+}[size];
+---
+
+<As
+  data-heading
+  class:list={["flex flex-col gap-[0.04em] leading-none", align === "center" ? "items-center" : "items-start", fs, className]}
+>
+  {
+    lines.map((l, i) => (
+      <span class="relative block" style={l.indent ? { marginLeft: l.indent } : undefined}>
+        {i === 0 && tag && (
+          <span data-hl-line aria-hidden="true" class="hl-tag absolute bottom-full left-0 mb-[0.04em] text-[0.32em]">
+            {tag}
+          </span>
+        )}
+        <span data-hl-line class:list={["hl", l.font === "pixel" ? "hl-pixel" : "hl-sans"]}>
+          {l.text}
+        </span>
+        {i < lines.length - 1 && " "}
+      </span>
+    ))
+  }
+</As>

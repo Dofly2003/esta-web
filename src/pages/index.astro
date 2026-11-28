@@ -1,53 +1,114 @@
 ---
 import Site from "../layouts/Site.astro";
+import Heading from "../components/Heading.astro";
+import RollButton from "../components/RollButton.astro";
+import PixelCorner from "../components/PixelCorner.astro";
+import Orb from "../components/Orb.astro";
 import PortfolioCard from "../components/PortfolioCard.astro";
 import { api } from "../lib/api";
-import { SERVICES } from "@shared/constants";
-import type { PortfolioItem } from "@shared/types";
+import { BRAND, PERKS, SERVICES, SERVICE_GROUPS } from "@shared/constants";
+import type { PublicHome } from "@shared/types";
 
-const { featured, stats } = await api<{ featured: PortfolioItem[]; stats: { done: number; clients: number } }>(
+const { featured, stats } = await api<PublicHome>(
   Astro,
   "/api/public/home",
 );
 
-const numbers = [
-  { value: stats.done, label: "Proyek selesai" },
-  { value: stats.clients, label: "Klien dilayani" },
-  { value: SERVICES.length, label: "Layanan utama" },
+const highlights = [
+  { value: stats.done, suffix: "+", label: "Proyek selesai", icon: "M0 0h4v4H0zM6 0h4v4H6zM0 6h4v4H0zM6 6h4v4H6z" },
+  { value: stats.clients, suffix: "+", label: "Klien dilayani", icon: "M3 0h4v4H3zM0 6h10v4H0z" },
+  // "jenis layanan" sudah tampil di bento layanan; di sini diganti janji waktu balas (sama dengan pesan sukses form)
+  { value: 24, suffix: "", label: "Jam kerja maks. balas pesan", icon: "M4 0h2v6H4zM6 4h4v2H6z" },
+  { value: 5, suffix: "x", label: "Revisi minor gratis", icon: "M4 0h2v4h4v2H6v4H4V6H0V4h4z" },
 ];
+
+const groups = (["website", "software"] as const).map((key, i) => ({
+  key,
+  n: String(i + 1).padStart(3, "0"),
+  ...SERVICE_GROUPS[key],
+  items: SERVICES.filter((s) => s.group === key).map((s) => s.title),
+}));
+
 const steps = [
-  { n: "01", title: "Diskusi & Riset", desc: "Memahami tujuan bisnis, pengguna, dan kebutuhan fitur." },
-  { n: "02", title: "Desain UI/UX", desc: "Wireframe dan prototipe interaktif untuk disetujui bersama." },
-  { n: "03", title: "Development", desc: "Dibangun bertahap dengan progres yang bisa Anda pantau." },
-  { n: "04", title: "Launch & Support", desc: "Go-live, training, dan dukungan setelah peluncuran." },
+  { n: "01", title: "Diskusi & riset", desc: "Kita bahas tujuan bisnis, siapa penggunanya, dan fitur apa yang benar-benar dibutuhkan. Hasilnya: scope, estimasi waktu, dan biaya yang jelas." },
+  { n: "02", title: "Desain tampilan", desc: "Kami buat rancangan tampilan dan alur pengguna untuk kamu cek dulu. Revisi minor gratis sampai 5 kali." },
+  { n: "03", title: "Pengembangan", desc: "Dibangun bertahap. Setiap tahap bisa kamu lihat dan coba sendiri, jadi tidak ada kejutan di akhir." },
+  { n: "04", title: "Peluncuran & pendampingan", desc: "Kami online-kan lengkap dengan hosting dan SSL, lalu dampingi timmu memakainya. Bug setelah peluncuran kami perbaiki gratis." },
 ];
+
+const faqs = [
+  { q: "Saya baru punya ide, belum ada konsep. Bisa?", a: "Bisa. Justru di tahap itu pendampingan kami paling berguna. Kita mulai dari tujuan bisnismu, lalu kami bantu terjemahkan ke fitur dan tampilan." },
+  { q: "Berapa lama pengerjaannya?", a: "Tergantung scope. Landing page jauh lebih cepat daripada aplikasi atau sistem informasi. Estimasi waktu yang pasti kami berikan setelah sesi diskusi pertama." },
+  { q: "Apakah sudah termasuk hosting dan domain?", a: "Hosting dan SSL (https) gratis. Untuk domain, kami bantu pilihkan dan daftarkan atas nama bisnismu." },
+  { q: "Bagaimana kalau hasilnya kurang pas?", a: "Ada gratis revisi minor sampai 5 kali. Karena desain disetujui di awal, perubahan besar di tengah jalan jarang terjadi." },
+  { q: "Kalau ada bug setelah selesai?", a: "Bug yang muncul setelah peluncuran kami perbaiki tanpa biaya tambahan." },
+];
+
+const ribbon = ["Website Company Profile", "Landing Page", "Aplikasi Web", "Aplikasi Mobile", "Aplikasi Desktop", "Sistem Informasi Bisnis"];
+const ribbonColors = ["grad", "bg-white text-ink", "bg-sky text-ink", "bg-ink-3 text-white", "bg-violet text-white", "bg-azure text-ink"];
 ---
 
 <Site>
-  <!-- HERO -->
-  <section class="relative overflow-hidden">
-    <div class="pointer-events-none absolute -top-40 left-1/2 h-[520px] w-[820px] -translate-x-1/2 rounded-full bg-accent/30 blur-[120px]"></div>
-    <div class="pointer-events-none absolute top-40 -right-20 h-72 w-72 rounded-full bg-accent-2/20 blur-[100px]"></div>
-    <div class="relative mx-auto max-w-6xl px-4 pb-20 pt-20 md:pt-28">
-      <p class="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-white/70">
-        <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Menerima proyek baru
-      </p>
-      <h1 class="max-w-4xl text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl md:text-7xl">
-        Kami membangun <span class="bg-gradient-to-r from-accent to-accent-2 bg-clip-text text-transparent">produk digital</span> yang bekerja untuk bisnis Anda.
-      </h1>
-      <p class="mt-6 max-w-xl text-base text-white/60 sm:text-lg">
-        Website company profile, aplikasi web, dan mobile app — dirancang rapi, dibangun cepat, dan mudah dikembangkan.
-      </p>
-      <div class="mt-10 flex flex-wrap gap-3">
-        <a href="/contact" class="btn-primary rounded-full px-6 py-3 text-base">Konsultasi Gratis →</a>
-        <a href="/portfolio" class="btn rounded-full border border-white/15 px-6 py-3 text-base text-white hover:bg-white/5">Lihat Portofolio</a>
+  <!-- ============ 1. HERO ============ -->
+  <section data-hero data-section class="grid-bg relative isolate flex min-h-[100svh] items-center overflow-hidden">
+    <PixelCorner corner="tr" from="#6b4fc8" to="#5ec8f2" class="-z-10" />
+    <PixelCorner corner="bl" from="#5ec8f2" to="#5a5fd8" class="-z-10" />
+    <Orb icon="spark" size={132} class="top-[9%] right-[7%] hidden md:grid" />
+    <Orb icon="mark" size={104} class="bottom-[12%] left-[4%] hidden md:grid" />
+
+    <div class="container-x py-32">
+      <div class="mx-auto w-fit">
+        <Heading
+          as="h1"
+          size="xl"
+          tag="#ESTA.Studio"
+          lines={[
+            { text: "Ubah Idemu", font: "sans", indent: "0.9em" },
+            { text: "Jadi Solusi", font: "pixel" },
+            { text: "Digital.", font: "sans", indent: "1.6em" },
+          ]}
+        />
+        <div class="mt-10 grid gap-8 sm:grid-cols-[minmax(0,26rem)_auto] sm:items-end sm:justify-between">
+          <p data-fade class="text-[15px] leading-relaxed text-white/75">
+            Kami membuat website dan software untuk bisnis, dari company profile sampai sistem informasi. Tim kami
+            kecil, berbasis di {BRAND.city}, dan tetap mendampingi setelah proyekmu online.
+          </p>
+          <div data-fade class="flex flex-wrap items-center gap-5">
+            <RollButton href="/contact" label="Konsultasi" />
+            <a href="/portfolio" class="mono inline-flex min-h-11 items-center text-white/60 underline-offset-4 hover:text-white hover:underline">Lihat karya</a>
+          </div>
+        </div>
       </div>
-      <dl class="mt-16 grid max-w-2xl grid-cols-3 gap-6 border-t border-white/10 pt-8">
+    </div>
+
+    <div class="absolute inset-x-0 bottom-0">
+      <div class="container-x mono-dim flex justify-between py-5 text-[11px]">
+        <span data-fade>[ {BRAND.address} ]</span>
+        <span data-fade class="hidden sm:inline">Scroll <span class="blink">_</span></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. HIGHLIGHTS ============ -->
+  <section data-section class="border-y border-white/8 bg-ink">
+    <div class="container-x border-x border-white/8 bg-ink-2/60 py-14">
+      <p data-fade class="mono-dim">[ Sorotan ESTA ] -- ESTA Studio dalam angka.</p>
+      <dl data-stagger class="mt-12 grid grid-cols-2 gap-y-12 md:grid-cols-4">
         {
-          numbers.map((s) => (
-            <div>
-              <dt class="text-xs text-white/50 sm:text-sm">{s.label}</dt>
-              <dd class="mt-1 text-3xl font-extrabold sm:text-4xl">{s.value}+</dd>
+          highlights.map((h) => (
+            <div class="px-1">
+              <dt class="flex items-center gap-2.5 text-sm text-white/80">
+                <span class="grid h-6 w-6 place-items-center bg-white">
+                  <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                    <path d={h.icon} fill="#0b0f2a" />
+                  </svg>
+                </span>
+                {h.label}
+              </dt>
+              <dd class="mt-4 font-dot text-[clamp(3rem,6vw,4.5rem)] leading-none tracking-[-0.04em]">
+                <span data-count={h.value}>{h.value}</span>
+                {h.suffix}
+              </dd>
             </div>
           ))
         }
@@ -55,57 +116,328 @@ const steps = [
     </div>
   </section>
 
-  <!-- LAYANAN -->
-  <section id="layanan" class="scroll-mt-24 border-t border-white/5 bg-ink-2">
-    <div class="mx-auto max-w-6xl px-4 py-20">
-      <p class="text-sm font-semibold text-accent-2">Layanan</p>
-      <h2 class="mt-2 max-w-2xl text-3xl font-extrabold tracking-tight sm:text-4xl">Satu tim untuk desain sampai development.</h2>
-      <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {
-          SERVICES.map((s) => (
-            <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-6 transition hover:border-accent/60">
-              <div class="text-3xl">{s.icon}</div>
-              <h3 class="mt-5 text-lg font-bold">{s.title}</h3>
-              <p class="mt-2 text-sm text-white/55">{s.desc}</p>
-            </div>
-          ))
-        }
+  <!-- ============ 3. APA YANG KAMI BUAT (bento) ============ -->
+  <section id="layanan" data-section class="scroll-mt-10 bg-ink">
+    <div class="container-x border-x border-white/8 pt-24 pb-16">
+      <div class="flex justify-center">
+        <Heading
+          size="lg"
+          lines={[
+            { text: "Apa yang", font: "sans" },
+            { text: "kami buat?", font: "pixel", indent: "1.1em" },
+          ]}
+        />
       </div>
     </div>
-  </section>
-
-  <!-- PORTOFOLIO -->
-  <section class="mx-auto max-w-6xl px-4 py-20">
-    <div class="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p class="text-sm font-semibold text-accent-2">Portofolio</p>
-        <h2 class="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Karya pilihan</h2>
-      </div>
-      <a href="/portfolio" class="text-sm text-white/70 hover:text-white">Semua karya →</a>
-    </div>
-    {
-      featured.length === 0 ? (
-        <p class="mt-10 text-white/50">Belum ada karya yang ditampilkan.</p>
-      ) : (
-        <div class="mt-10 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
-          {featured.map((item) => <PortfolioCard item={item} />)}
+    <div class="container-x grid border border-white/8 md:grid-cols-3">
+      <!-- 001 -->
+      <div class="relative flex min-h-[28rem] flex-col justify-between border-b border-white/8 p-7 md:border-r md:border-b-0">
+        <span class="mono-dim">-- 001.</span>
+        <svg class="absolute top-0 right-0 w-[62%]" viewBox="0 0 180 120" aria-hidden="true">
+          <defs>
+            <linearGradient id="bento-g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#5ec8f2" /><stop offset="1" stop-color="#6b4fc8" />
+            </linearGradient>
+          </defs>
+          <path d="M0 0H180V120H120V80H60V40H0Z" fill="url(#bento-g)" />
+        </svg>
+        <div data-fade>
+          <p class="text-[clamp(1.6rem,2.4vw,2.1rem)] leading-[1.1] font-normal tracking-[-0.04em] text-white/45">
+            Website dan software yang <span class="text-white">rapi</span>, <span class="text-white">cepat</span>,
+            dan <span class="text-white">mudah dirawat</span>.
+          </p>
         </div>
-      )
-    }
+      </div>
+      <!-- 002 -->
+      <div class="relative flex min-h-[28rem] flex-col border-b border-white/8 p-7 md:border-r md:border-b-0">
+        <span class="mono-dim">-- 002.</span>
+        <div data-fade class="mt-10">
+          <p class="font-dot text-[clamp(4.5rem,8vw,6.5rem)] leading-none tracking-[-0.05em]">
+            {SERVICES.length}
+          </p>
+          <p class="mt-2 text-lg tracking-[-0.03em]">Jenis layanan digital</p>
+          <ul class="mono mt-5 space-y-1.5 text-[11px] text-white/70">
+            {
+              groups.map((g) => (
+                <li>
+                  [ {g.items.length} ] <span class="text-white/45">{g.title}</span>
+                </li>
+              ))
+            }
+          </ul>
+        </div>
+        <div data-dotwave data-from="end" class="mt-auto ml-auto grid w-[70%] grid-cols-8 gap-2 pt-10" aria-hidden="true">
+          {Array.from({ length: 32 }, () => <i class="block aspect-square rounded-full bg-gradient-to-br from-sky to-violet" />)}
+        </div>
+      </div>
+      <!-- 003 -->
+      <div class="flex min-h-[28rem] flex-col justify-between p-7">
+        <span class="mono-dim">-- 003.</span>
+        <div data-fade>
+          <p class="max-w-xs text-[15px] leading-relaxed text-white/75">
+            Desain, development, dan pendampingan setelah online dipegang satu tim, jadi kamu cukup berurusan dengan
+            satu kontak.
+          </p>
+          <ul class="mt-6 space-y-2" data-stagger>
+            {
+              ["Company profile", "Landing page", "Aplikasi web & mobile", "Sistem informasi bisnis"].map((t) => (
+                <li class="flex items-center gap-3 text-sm">
+                  <svg width="12" height="10" viewBox="0 0 12 10" aria-hidden="true">
+                    <path d="M1 5l3.5 3.5L11 1" stroke="#5ec8f2" stroke-width="1.8" fill="none" />
+                  </svg>
+                  <span class="bg-white px-1.5 py-0.5 text-ink">{t}</span>
+                </li>
+              ))
+            }
+          </ul>
+        </div>
+        <a href="#layanan-detail" class="mono mt-10 inline-flex min-h-11 items-center self-start text-white/80 hover:text-white">Lihat semua layanan ▸</a>
+      </div>
+    </div>
   </section>
 
-  <!-- PROSES -->
-  <section class="border-t border-white/5 bg-ink-2">
-    <div class="mx-auto max-w-6xl px-4 py-20">
-      <p class="text-sm font-semibold text-accent-2">Cara kerja</p>
-      <h2 class="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Proses yang transparan</h2>
-      <div class="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+  <!-- ============ 4. PITA LAYANAN ============ -->
+  <div class="bg-ink pt-24" aria-hidden="true">
+    <div class="overflow-hidden border-y border-white/10">
+      <div data-marquee data-speed="40" class="flex w-max">
         {
+          [0, 1].map(() =>
+            ribbon.map((r, i) => (
+              <span class={`flex h-16 shrink-0 items-center gap-4 px-8 text-lg tracking-[-0.03em] ${ribbonColors[i]}`}>
+                <span class="mono text-[11px] opacity-70">{String(i + 1).padStart(2, "0")}</span>
+                {r}
+                <span class="font-pixel">→</span>
+              </span>
+            )),
+          )
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 5. PANEL LAYANAN (menumpuk) ============ -->
+  <div id="layanan-detail" class="relative scroll-mt-10">
+    {
+      groups.map((g, i) => (
+        <section data-panel data-section class="relative overflow-hidden md:sticky md:top-0 md:h-[100svh] md:min-h-[640px]">
+          <div
+            data-panel-inner
+            class="flex min-h-[100svh] origin-top flex-col justify-between gap-10 px-5 py-10 text-ink md:h-full md:min-h-0 md:px-10"
+            style={{
+              background:
+                i === 0
+                  ? "linear-gradient(125deg, #4f86e0 -10%, #5a5fd8 55%, #6b4fc8 110%)"
+                  : "linear-gradient(300deg, #5ec8f2 -20%, #5a5fd8 40%, #2a2f86 110%)",
+            }}
+          >
+            <h2 class="text-[clamp(3.5rem,11vw,10rem)] leading-[0.92] font-normal tracking-[-0.065em] text-white">
+              {g.title.split(" ")[0]}
+              <br />
+              <span class="font-pixel tracking-[-0.05em]">{g.title.split(" ").slice(1).join(" ")}</span>
+            </h2>
+            <div class="grid border border-white/25 bg-ink/80 backdrop-blur-sm md:grid-cols-[1fr_1.3fr_1fr]">
+              <div class="mono flex items-start justify-between gap-4 border-b border-white/15 p-5 text-white md:border-r md:border-b-0">
+                <span>-- {g.n}.</span>
+                <span>[ Layanan ]</span>
+              </div>
+              <div class="border-b border-white/15 p-5 text-white md:border-r md:border-b-0">
+                <p class="text-[15px] leading-relaxed">{g.desc}</p>
+                <ul class="mt-5 flex flex-wrap gap-1.5">
+                  {g.items.map((t) => (
+                    <li class="mono bg-white px-2 py-1 text-[11px] text-ink"># {t}</li>
+                  ))}
+                </ul>
+              </div>
+              <div class="grid place-items-center p-6">
+                <div data-dotwave data-from={i ? "end" : "center"} class="grid w-full max-w-[220px] grid-cols-7 gap-2" aria-hidden="true">
+                  {Array.from({ length: 35 }, () => (
+                    <i class="block aspect-square rounded-full bg-white" />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      ))
+    }
+  </div>
+
+  <!-- ============ 6. KARYA PILIHAN (bukti kerja tepat setelah layanan) ============ -->
+  <section data-section class="grid-bg relative bg-ink">
+    <div class="container-x py-28">
+      <div class="flex flex-wrap items-end justify-between gap-8">
+        <div>
+          <p data-fade class="mono-dim mb-12">-- Dikerjakan bersama klien kami.</p>
+          <Heading
+            size="lg"
+            lines={[
+              { text: "Karya", font: "sans" },
+              { text: "Pilihan.", font: "pixel", indent: "0.8em" },
+            ]}
+          />
+        </div>
+        <div data-fade><RollButton href="/portfolio" label="Semua karya" /></div>
+      </div>
+      {
+        featured.length === 0 ? (
+          <p class="mt-14 text-white/50">Karya sedang disiapkan untuk ditampilkan.</p>
+        ) : (
+          <div data-stagger class="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {featured.map((item, i) => (
+              <PortfolioCard item={item} index={i} />
+            ))}
+          </div>
+        )
+      }
+    </div>
+  </section>
+
+  <!-- ============ 7. KENAPA ESTA (bonus) ============ -->
+  <section data-section class="bg-ink-2">
+    <div class="container-x py-28">
+      <div class="grid gap-10 md:grid-cols-2 md:items-end">
+        <div>
+          <p data-fade class="mono-dim mb-12">-- Sudah termasuk di <span class="text-white">[ setiap proyek ]</span>.</p>
+          <Heading
+            size="lg"
+            lines={[
+              { text: "Kenapa", font: "sans" },
+              { text: "ESTA Studio?", font: "pixel", indent: "0.6em" },
+            ]}
+          />
+        </div>
+        <p data-fade class="max-w-sm text-[15px] leading-relaxed text-white/70 md:justify-self-end">
+          Revisi minor, pendampingan, perbaikan bug, hosting, dan SSL sudah masuk di harga proyek, tanpa tagihan
+          tambahan.
+        </p>
+      </div>
+
+      <div data-steps class="mt-20 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {
+          PERKS.map((p, i) => (
+            <article
+              class="flex min-h-[19rem] flex-col justify-between border border-white/10 bg-ink p-6 transition-colors hover:border-sky/60 lg:mt-[var(--o)]"
+              style={{ "--o": `${i * 2.5}rem` }}
+            >
+              <div class="flex items-start justify-between gap-4">
+                <h3 class="text-2xl leading-[1.08] font-normal tracking-[-0.045em]">{p.title}</h3>
+                <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true" class="shrink-0">
+                  {[0, 1, 2].flatMap((y) =>
+                    [0, 1, 2].map((x) =>
+                      (x + y + i) % 2 === 0 ? <rect x={x * 12} y={y * 12} width="10" height="10" fill="rgb(255 255 255 / 0.35)" /> : null,
+                    ),
+                  )}
+                </svg>
+              </div>
+              <div>
+                <p class="text-[13px] leading-relaxed text-white/65">{p.desc}</p>
+                <p class="mono mt-4 text-white">-- {String(i + 1).padStart(3, "0")}.</p>
+              </div>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 8. PERNYATAAN (pengantar ke proses) ============ -->
+  <section data-section class="relative bg-ink py-32">
+    <div class="container-x relative">
+      <Orb icon="mark" size={92} class="top-[8%] right-[12%] hidden lg:grid" />
+      <p
+        data-lines
+        class="max-w-[15ch] text-[clamp(2.5rem,6vw,5rem)] leading-[1.02] font-normal tracking-[-0.055em]"
+      >
+        Setiap proyek dimulai dari diskusi gratis soal bisnismu, sebelum ada desain atau kode.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 9. PITA PROSES (pixel) ============ -->
+  <section class="overflow-hidden border-y border-white/10 bg-ink-2 py-6" aria-hidden="true">
+    <div data-marquee="right" data-speed="34" class="flex w-max items-end">
+      {
+        [0, 1, 2].map(() =>
           steps.map((s) => (
-            <div class="border-t border-white/15 pt-5">
-              <span class="text-sm font-bold text-accent">{s.n}</span>
-              <h3 class="mt-2 font-bold">{s.title}</h3>
-              <p class="mt-2 text-sm text-white/55">{s.desc}</p>
+            <span class="flex shrink-0 items-end gap-5 px-8">
+              <span class="font-dot text-6xl leading-none">{s.n}</span>
+              <span class="mono pb-1 text-[11px] text-white/60">{s.title}</span>
+              <span class="pb-3 font-pixel text-2xl text-white/30">··</span>
+            </span>
+          )),
+        )
+      }
+    </div>
+  </section>
+
+  <!-- ============ 10. PROSES (split) ============ -->
+  <section id="proses" data-section class="scroll-mt-10 bg-ink">
+    <div class="grid min-h-[80svh] md:grid-cols-2">
+      <div class="relative flex flex-col justify-between overflow-hidden p-8 md:p-14" style={{ background: "linear-gradient(160deg, #4f86e0 0%, #5ec8f2 120%)" }}>
+        <Heading
+          size="lg"
+          lines={[
+            { text: "Cara", font: "sans" },
+            { text: "Kerja", font: "pixel", indent: "0.7em" },
+          ]}
+        />
+        <div data-fade class="mt-20 max-w-sm text-ink">
+          <p class="mono text-[12px]">[ Proses ]</p>
+          <p class="mt-3 text-[15px] leading-relaxed">
+            Empat tahap yang sama untuk setiap proyek, besar atau kecil. Kamu selalu tahu sedang di tahap mana dan apa
+            langkah berikutnya.
+          </p>
+        </div>
+      </div>
+      <div class="flex flex-col justify-center bg-paper p-8 text-ink md:p-14">
+        <div data-acc="first" class="divide-y divide-ink/15 border-y border-ink/15">
+          {
+            steps.map((s) => (
+              <div data-acc-item>
+                <button data-acc-btn type="button" class="flex w-full items-center gap-5 py-6 text-left">
+                  <span class="grid h-7 w-7 shrink-0 place-items-center border border-ink/30">
+                    <svg data-acc-icon width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                      <path d="M6 0v12M0 6h12" stroke="#0b0f2a" stroke-width="1.6" />
+                    </svg>
+                  </span>
+                  <span class="font-dot text-3xl leading-none">{s.n}</span>
+                  <span class="ml-auto text-right text-lg tracking-[-0.03em]">{s.title}</span>
+                </button>
+                <div data-acc-panel>
+                  <p class="max-w-md pb-6 pl-12 text-[14px] leading-relaxed text-ink/70">{s.desc}</p>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+        <div data-fade class="mt-10 self-end"><RollButton href="/contact" label="Mulai diskusi" light /></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 11. FAQ ============ -->
+  <section data-section class="border-t border-white/8 bg-ink">
+    <div class="container-x grid gap-14 py-28 md:grid-cols-[1fr_1.4fr]">
+      <div>
+        <p data-fade class="mono-dim">-- Pertanyaan yang sering diajukan.</p>
+        <h2 data-fade class="mt-6 max-w-xs text-2xl leading-tight font-normal tracking-[-0.04em]">
+          Yang biasanya ditanyakan sebelum mulai proyek.
+        </h2>
+        <div data-fade class="mt-8"><RollButton href="/contact" label="Tanya langsung" /></div>
+      </div>
+      <div data-acc class="divide-y divide-white/10 border-y border-white/10">
+        {
+          faqs.map((f) => (
+            <div data-acc-item>
+              <button data-acc-btn type="button" class="flex w-full items-center justify-between gap-6 py-6 text-left">
+                <span class="text-lg tracking-[-0.03em]">{f.q}</span>
+                <svg data-acc-icon width="14" height="14" viewBox="0 0 14 14" class="shrink-0" aria-hidden="true">
+                  <path d="M7 0v14M0 7h14" stroke="#5ec8f2" stroke-width="1.6" />
+                </svg>
+              </button>
+              <div data-acc-panel>
+                <p class="max-w-lg pb-6 text-[14px] leading-relaxed text-white/65">{f.a}</p>
+              </div>
             </div>
           ))
         }
@@ -113,13 +445,34 @@ const steps = [
     </div>
   </section>
 
-  <!-- CTA -->
-  <section class="mx-auto max-w-6xl px-4 py-20">
-    <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-accent to-[#3b2fd0] px-6 py-14 text-center sm:px-12">
-      <div class="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-accent-2/40 blur-3xl"></div>
-      <h2 class="relative text-3xl font-extrabold tracking-tight sm:text-4xl">Punya ide proyek?</h2>
-      <p class="relative mx-auto mt-3 max-w-lg text-white/80">Ceritakan kebutuhan Anda. Kami bantu susun scope, estimasi waktu, dan biaya.</p>
-      <a href="/contact" class="btn relative mt-8 rounded-full bg-white px-6 py-3 text-base text-ink hover:bg-white/90">Hubungi Kami</a>
+  <!-- ============ 12. LOKASI (dekat footer / CTA) ============ -->
+  <section id="lokasi" data-section class="scroll-mt-10 border-t border-white/8 bg-ink" aria-labelledby="lokasi-h">
+    <div class="container-x pt-28">
+      <h2 id="lokasi-h" data-fade class="mono-dim">-- Lokasi & cara bertemu.</h2>
+    </div>
+    <div class="container-x grid gap-4 pt-10 pb-28 md:grid-cols-2">
+      {
+        [
+          { tag: "Basecamp", title: BRAND.city, sub: "Jawa Timur, Indonesia", desc: "Klien di Surabaya dan sekitarnya bisa ketemu langsung untuk diskusi kebutuhan." },
+          { tag: "Remote", title: "Seluruh Indonesia", sub: "Meeting online", desc: "Di luar kota? Diskusi lewat video call, progres bisa dipantau kapan saja." },
+        ].map((c, i) => (
+          <article data-fade class="grid-bg relative flex min-h-[22rem] flex-col justify-between overflow-hidden border border-white/10 bg-ink-2 p-7">
+            <span class="mono text-sky">[ {c.tag} ]</span>
+            <div>
+              <h3 class="text-[clamp(2.25rem,4vw,3.25rem)] leading-none font-normal tracking-[-0.055em]">
+                {i === 0 ? c.title : <span class="font-pixel tracking-[-0.04em]">{c.title}</span>}
+              </h3>
+              <p class="mono-dim mt-3">{c.sub}</p>
+              <p class="mt-6 max-w-sm text-[14px] leading-relaxed text-white/70">{c.desc}</p>
+            </div>
+          </article>
+        ))
+      }
     </div>
   </section>
+
 </Site>
+
+<script>
+  import "../scripts/lines";
+</script>

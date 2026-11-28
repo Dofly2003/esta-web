@@ -12,24 +12,25 @@
     "db:seed": "bun scripts/seed.ts",
     "db:import": "bun scripts/import-firestore.ts",
     "check": "vp check",
+    "typecheck": "vp check --no-fmt",
     "lint": "vp lint",
     "fmt": "vp fmt",
-    "test": "vp test"
+    "test": "bun run test:server && bun run test:web",
+    "test:server": "bun --no-env-file scripts/test-server.ts",
+    "test:server:once": "bun test --no-env-file",
+    "test:web": "vp test run"
   },
   "dependencies": {
-    "@astrojs/react": "7.1.9",
     "@libsql/client": "^0.18.0",
     "astro": "7.4.13",
-    "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "gsap": "^3.15.1",
+    "valibot": "1.5.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
     "@types/bun": "latest",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
+    "happy-dom": "^21.0.4",
     "tailwindcss": "^4.1.0",
-    "typescript": "^5.6.0",
-    "vite-plus": "1.7.0"
+    "vite-plus": "1.8.0"
   }
 }

@@ -1,9 +1,16 @@
 ---
+// Chip status bertitik. opt = entri peta status di @shared/constants (opt.cls = kelas nada "tone-*").
+// Isi bebas: <Badge tone="accent">teks</Badge>; tone="none" = chip tanpa titik. Atribut lain diteruskan.
+import type { Tone } from "@shared/constants";
+
 interface Props {
   opt?: { label: string; cls: string };
-  fallback?: string;
+  tone?: Tone | "none";
+  class?: string;
+  [attr: string]: unknown;
 }
-const { opt, fallback = "—" } = Astro.props;
+const { opt, tone, class: cls, ...attrs } = Astro.props;
+const toneCls = tone === "none" ? null : tone ? `tone-${tone}` : opt ? opt.cls : "tone-neutral";
 ---
 
-<span class:list={["badge", opt ? opt.cls : "bg-zinc-100 text-zinc-600"]}>{opt ? opt.label : fallback}</span>
+<span class:list={["badge", toneCls, cls]} {...attrs}>{Astro.slots.has("default") ? <slot /> : opt ? opt.label : "—"}</span>

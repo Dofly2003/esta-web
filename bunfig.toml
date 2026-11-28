@@ -1,0 +1,4 @@
+# Hanya untuk `bun test` (tes server). Tes web (Vitest) di tests/web dijalankan `vp test`.
+[test]
+root = "tests/server"
+preload = ["./tests/server/setup.ts"]

@@ -1,0 +1,36 @@
+---
+// Avatar + nama satu baris (.person). Avatar dekoratif (nama sudah tertulis).
+// Tanpa nama: avatar kosong + teks fallback. sub → baris kedua (mis. email); slot "after" → di belakang nama
+// (mis. "(Anda)"); size="lg" → avatar 32px. Sisa atribut diteruskan ke <span class="person">
+// (termasuk penanda scope gaya halaman induk).
+import Avatar from "./Avatar.astro";
+
+interface Props {
+  name?: string | null;
+  fallback?: string;
+  sub?: string;
+  size?: "md" | "lg";
+  class?: string;
+  nameClass?: string;
+  [attr: string]: unknown;
+}
+const { name, fallback = "—", sub, size = "md", class: cls, nameClass = "ell", ...attrs } = Astro.props;
+const stacked = !!sub || Astro.slots.has("after");
+---
+
+<span class:list={["person", size === "lg" && "is-lg", cls]} {...attrs}>
+  <Avatar name={name} size={size} decorative />
+  {
+    stacked ? (
+      <span class="person-text">
+        <span class:list={["person-name", nameClass]}>
+          {name ?? fallback}
+          <slot name="after" />
+        </span>
+        {sub && <span class="sub ell">{sub}</span>}
+      </span>
+    ) : (
+      <span class={nameClass}>{name ?? fallback}</span>
+    )
+  }
+</span>

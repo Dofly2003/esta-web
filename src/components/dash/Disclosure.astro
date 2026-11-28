@@ -1,0 +1,30 @@
+---
+// <details> dengan summary.disclose: ikon depan + label + chevron (hanya chevron yang berputar saat terbuka).
+// Isi = slot default. Atribut lain (mis. data-*, penanda scope halaman) diteruskan ke <details>.
+import Icon, { type IconName } from "./Icon.astro";
+
+interface Props {
+  icon: IconName;
+  label: string;
+  open?: boolean;
+  id?: string;
+  class?: string;
+  /** bungkus label dengan <span class={labelClass}> */
+  labelClass?: string;
+  /** kelas tambahan untuk <summary> */
+  summaryClass?: string;
+  /** ukuran chevron: sm = 14px (default), md = 16px */
+  chevSize?: "sm" | "md";
+  [attr: string]: unknown;
+}
+const { icon, label, open = false, id, class: cls = "panel", labelClass, summaryClass, chevSize = "sm", ...attrs } = Astro.props;
+---
+
+<details open={open} class={cls} id={id} {...attrs}>
+  <summary class:list={["disclose pad", summaryClass]}>
+    <Icon name={icon} class="ic-sm" />
+    {labelClass ? <span class={labelClass}>{label}</span> : label}
+    <Icon name="chev-d" class={chevSize === "sm" ? "ic-sm" : undefined} />
+  </summary>
+  <slot />
+</details>

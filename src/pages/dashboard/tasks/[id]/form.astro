@@ -1,0 +1,16 @@
+---
+// Fragmen HTML isi popover "Ubah" (TaskActions): forms.ts memuatnya saat popover dibuka (fetch same-origin) dan
+// menaruhnya di .pop-panel. Partial: tanpa <!DOCTYPE>, <head>, skrip atau gaya (gaya sudah ada di halaman induk).
+import TaskEditForm from "../../../../components/dash/TaskEditForm.astro";
+import { editTaskBacks } from "../../../../components/dash/ui";
+import { apiOrNull } from "../../../../lib/api";
+import type { TaskEditResponse } from "@shared/types";
+
+export const partial = true;
+
+const data = await apiOrNull<TaskEditResponse>(Astro, `/api/tasks/${encodeURIComponent(Astro.params.id!)}`);
+if (!data) return new Response(null, { status: 404 });
+const { back, deleteBack } = editTaskBacks(Astro.url.searchParams, data.task.id);
+---
+
+<TaskEditForm task={data.task} users={data.users} back={back} deleteBack={deleteBack} sheet />

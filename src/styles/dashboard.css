@@ -1,0 +1,2881 @@
+/* ============================================================
+   ESTA dashboard design system
+   Struktur, kepadatan, skala tipe & bentuk komponen mengikuti prototipe
+   dashboard referensi; warna memakai palet Vercel / Geist (netral,
+   tanpa gradasi; biru Vercel untuk fokus, info & tautan beraksen).
+
+   SEMUA aturan di sini di-scope ke <html data-dash> (diset oleh
+   layouts/Dash.astro lewat Base.astro). Halaman publik tidak terpengaruh.
+
+   Tema: tanpa pilihan tersimpan, tema ikut OS (color-scheme "dark light"; OS tanpa
+   preferensi = terang). Token warna ditulis sekali dengan light-dark(terang, gelap);
+   color-scheme di <html> memilih sisinya, atau dipaksa lewat
+   <html data-theme="dark|light"> (diset sebelum paint oleh ThemeScript.astro,
+   key localStorage "esta-dash-theme"). Hanya --tint dan --select-chev (bukan
+   warna) yang ditulis per tema. Browser tanpa light-dark() (Safari < 17.5,
+   Chrome < 123, Firefox < 120) mendapat blok @supports cadangan di bawah token.
+
+   Ukuran: html[data-dash] memakai font-size 14px, jadi 1rem = 14px untuk rem di
+   sini DAN untuk utilitas Tailwind (gap-4 = 14px). Media query tetap berbasis 16px.
+   Breakpoint (ditulis literal, jangan @custom-media — tidak jalan di dev):
+   640px (ponsel), 900px (drawer sidebar; Dash.astro memakai matchMedia 899px),
+   1024px (form proyek 4 kolom, baris tambah tugas), 1200px (kolom bertumpuk).
+
+   Bagian:
+   1. Token (tanpa layer, agar menang atas aturan dasar tokens.css) + cadangan
+      light-dark() + kontras tinggi
+   2. Base dashboard (tanpa layer)
+   3. Komponen (@layer components — utilitas Tailwind tetap bisa menimpa)
+      reset & tipe · shell · tombol & kontrol · status · avatar & progres ·
+      permukaan · tata letak · data & hover baris · tugas · popover · sampul ·
+      responsif (1199 → 899 → 900+ → 640+ → 1024+ → 639) · warna paksa
+   4. Utilitas khusus dashboard (@layer utilities)
+   ============================================================ */
+
+/* ---------- 1. TOKEN ---------- */
+/* fallback Geist bermetrik sama (Arial disesuaikan) selagi Geist (Google Fonts, display=swap) dimuat:
+   teks tidak bergeser saat font berganti (CLS). Hanya dipakai lewat --font-sans di bawah (data-dash). */
+@font-face {
+  font-family: "Geist Fallback";
+  src: local("Arial");
+  size-adjust: 104.76%;
+  ascent-override: 95.94%;
+  descent-override: 28.16%;
+  line-gap-override: 0%;
+}
+html[data-dash] {
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  /* tipe */
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --lh-12: 16px;
+  --lh-13: 18px;
+  --lh-14: 20px;
+  --lh-16: 24px;
+  --lh-20: 28px;
+  --lh-24: 32px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  /* jarak */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+  --gap-inline: 6px; /* ikon + teks di tombol, badge, segmen, label field */
+  /* bentuk & ukuran */
+  --r-inner: 4px;
+  --r-control: 6px;
+  --r-panel: 8px;
+  --r-full: 999px;
+  --side-w: 240px;
+  --top-h: 56px;
+  --hit: 32px;
+  --hit-sm: 28px; /* .btn-sm, .input-sm, tombol tema */
+  --hit-xs: 24px; /* tautan breadcrumb */
+  --row-h-head: 36px;
+  --row-h: 52px;
+  --row-h-lg: 56px; /* baris proyek di ringkasan */
+  --col-head-h: 44px; /* kepala kolom kanban */
+  --seg-h: 26px; /* item segmen (dalam bingkai 2px + garis 1px = --hit) */
+  --badge-h: 22px;
+  --dot: 8px;
+  --view-max: 1440px;
+  --select-pad: 30px; /* ruang chevron <select> */
+  --ul-offset: 3px;
+  /* gerak */
+  --dur: 160ms;
+  --dur-drawer: 220ms;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --tr-colors:
+    background-color var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  /* lapisan */
+  --z-top: 30;
+  --z-backdrop: 39;
+  --z-side: 40;
+  --z-pop: 60;
+  --z-skip: 100;
+
+  /* palet Vercel / Geist: netral, tanpa gradasi. Satu-satunya pengecualian:
+     sampul karya tanpa gambar = pratinjau sampul website publik (Cover.astro),
+     bukan warna chrome dashboard — warna karya (data) → ink, label putih */
+  --cover-ink: #10153a;
+  --cover-tag-bg: #ffffff;
+  --cover-tag-text: #0b0f2a;
+
+  /* semantik: light-dark(TERANG, GELAP). Nilai yang sama dengan token lain ditulis sebagai referensi.
+     Ubah nilai di sini → ubah juga blok cadangan @supports di bawah. */
+  color-scheme: dark light;
+  --canvas: light-dark(#ffffff, #0a0a0a); /* sinkronkan dengan meta theme-color di ThemeScript.astro */
+  --sidebar: light-dark(#fafafa, #0a0a0a);
+  --panel: light-dark(#ffffff, #0a0a0a);
+  --raised: light-dark(#ffffff, #141414); /* popover, kartu kanban: di atas --sunken */
+  --sunken: light-dark(#f7f7f7, #0d0d0d); /* latar kolom kanban (gelap sedikit di atas kanvas, kartu #141414) */
+  --hover: light-dark(#f2f2f2, #1a1a1a);
+  --selected: light-dark(#ebebeb, #1f1f1f);
+  --border: light-dark(#ebebeb, #262626);
+  --border-strong: light-dark(#e0e0e0, #333333);
+  --control-border: light-dark(#858585, #6b6b6b); /* ≥3:1 juga di atas --hover / --selected */
+  --text: light-dark(#171717, #ededed);
+  --text-2: light-dark(#4d4d4d, #a1a1a1); /* gelap 7.66:1 di panel, 7.1:1 di raised */
+  --text-3: light-dark(#666666, #8f8f8f); /* ≥4.8:1 di selected */
+  --control-border-hover: var(--text-3);
+  --underline: var(--text-3); /* garis bawah .link */
+  --primary: light-dark(#171717, #ededed); /* tombol utama ala Vercel: kebalikan latar */
+  --primary-hover: light-dark(#383838, #cccccc);
+  --on-primary: light-dark(#ffffff, #0a0a0a);
+  --info: light-dark(#0068d6, #52a8ff);
+  --link: var(--info); /* .link-accent = biru Vercel */
+  --tone-purple: light-dark(#7c3aed, #a78bfa); /* tone-accent (ungu Vercel) */
+  --focus: light-dark(#0070f3, #52a8ff);
+  --logo-bg: light-dark(#ffffff, #000000);
+  --logo-ring: var(--border-strong);
+  --logo-fg: var(--text);
+  --critical: light-dark(#cb2a2f, #ff6166);
+  --warning: light-dark(#a35200, #f5b544); /* teks */
+  --warning-fill: light-dark(#d97706, #f5b544); /* titik, isi progres, ikon (≥3:1 di putih); teks tetap --warning */
+  --ok: light-dark(#16794a, #3dd68c);
+  --selection: light-dark(#d4d4d4, #3d3d3d);
+  --scroll-thumb: light-dark(#c9c9c9, #3d3d3d);
+  --shadow-pop: 0 8px 28px light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.6));
+  --shadow-sm: 0 1px 2px light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.3));
+  --backdrop: light-dark(rgb(0 0 0 / 0.24), rgb(0 0 0 / 0.6));
+  /* bukan warna → per tema (gelap di sini, terang di bawah) */
+  --tint: 14%; /* campuran nada untuk notice / hover tombol hapus */
+  /* chevron <select> (warna = --text-2; data URI tidak bisa memakai var()) */
+  --chev-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23a1a1a1' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  --chev-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%234d4d4d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  --select-chev: var(--chev-dark);
+}
+html[data-dash][data-theme="dark"] {
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  html[data-dash]:not([data-theme="dark"]) {
+    --tint: 9%;
+    --select-chev: var(--chev-light);
+  }
+}
+html[data-dash][data-theme="light"] {
+  color-scheme: light;
+  --tint: 9%;
+  --select-chev: var(--chev-light);
+}
+/* target sentuh: 44px di bawah 900px. Harus di luar @layer (sama seperti token di atas),
+   kalau tidak token tanpa layer selalu menang. */
+@media (max-width: 899px) {
+  html[data-dash] {
+    --hit: 44px;
+    --hit-sm: 44px;
+    --hit-xs: 44px;
+  }
+}
+/* kontras tinggi (kedua tema): hierarki tetap (text > text-2 > text-3), garis & kontrol lebih tegas */
+@media (prefers-contrast: more) {
+  html[data-dash] {
+    --text-2: light-dark(#2e2e2e, #c7c7c7);
+    --text-3: light-dark(#4d4d4d, #a1a1a1);
+    --control-border: light-dark(#666666, #8f8f8f);
+    --border: var(--control-border);
+    --border-strong: var(--control-border);
+  }
+}
+
+/* cadangan untuk browser tanpa light-dark(): token warna ditulis per tema (gelap, lalu terang).
+   Harus setelah blok di atas (menimpa nilai light-dark yang tidak valid di browser itu). */
+@supports not (color: light-dark(#000, #fff)) {
+  html[data-dash] {
+    --canvas: #0a0a0a;
+    --sidebar: #0a0a0a;
+    --panel: #0a0a0a;
+    --raised: #141414;
+    --sunken: #0d0d0d;
+    --hover: #1a1a1a;
+    --selected: #1f1f1f;
+    --border: #262626;
+    --border-strong: #333333;
+    --control-border: #6b6b6b;
+    --text: #ededed;
+    --text-2: #a1a1a1;
+    --text-3: #8f8f8f;
+    --primary: #ededed;
+    --primary-hover: #cccccc;
+    --on-primary: #0a0a0a;
+    --info: #52a8ff;
+    --tone-purple: #a78bfa;
+    --focus: #52a8ff;
+    --logo-bg: #000000;
+    --critical: #ff6166;
+    --warning: #f5b544;
+    --warning-fill: #f5b544;
+    --ok: #3dd68c;
+    --selection: #3d3d3d;
+    --scroll-thumb: #3d3d3d;
+    --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.6);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+    --backdrop: rgb(0 0 0 / 0.6);
+  }
+  @media (prefers-color-scheme: light) {
+    html[data-dash]:not([data-theme="dark"]) {
+      --canvas: #ffffff;
+      --sidebar: #fafafa;
+      --panel: #ffffff;
+      --raised: #ffffff;
+      --sunken: #f7f7f7;
+      --hover: #f2f2f2;
+      --selected: #ebebeb;
+      --border: #ebebeb;
+      --border-strong: #e0e0e0;
+      --control-border: #858585;
+      --text: #171717;
+      --text-2: #4d4d4d;
+      --text-3: #666666;
+      --primary: #171717;
+      --primary-hover: #383838;
+      --on-primary: #ffffff;
+      --info: #0068d6;
+      --tone-purple: #7c3aed;
+      --focus: #0070f3;
+      --logo-bg: #ffffff;
+      --critical: #cb2a2f;
+      --warning: #a35200;
+      --warning-fill: #d97706;
+      --ok: #16794a;
+      --selection: #d4d4d4;
+      --scroll-thumb: #c9c9c9;
+      --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.08);
+      --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+      --backdrop: rgb(0 0 0 / 0.24);
+    }
+  }
+  html[data-dash][data-theme="light"] {
+    --canvas: #ffffff;
+    --sidebar: #fafafa;
+    --panel: #ffffff;
+    --raised: #ffffff;
+    --sunken: #f7f7f7;
+    --hover: #f2f2f2;
+    --selected: #ebebeb;
+    --border: #ebebeb;
+    --border-strong: #e0e0e0;
+    --control-border: #858585;
+    --text: #171717;
+    --text-2: #4d4d4d;
+    --text-3: #666666;
+    --primary: #171717;
+    --primary-hover: #383838;
+    --on-primary: #ffffff;
+    --info: #0068d6;
+    --tone-purple: #7c3aed;
+    --focus: #0070f3;
+    --logo-bg: #ffffff;
+    --critical: #cb2a2f;
+    --warning: #a35200;
+    --warning-fill: #d97706;
+    --ok: #16794a;
+    --selection: #d4d4d4;
+    --scroll-thumb: #c9c9c9;
+    --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.08);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+    --backdrop: rgb(0 0 0 / 0.24);
+  }
+  @media (prefers-contrast: more) {
+    html[data-dash],
+    html[data-dash][data-theme="dark"] {
+      --text-2: #c7c7c7;
+      --text-3: #a1a1a1;
+      --control-border: #8f8f8f;
+      --border: #8f8f8f;
+      --border-strong: #8f8f8f;
+    }
+    html[data-dash][data-theme="light"] {
+      --text-2: #2e2e2e;
+      --text-3: #4d4d4d;
+      --control-border: #666666;
+      --border: #666666;
+      --border-strong: #666666;
+    }
+  }
+  @media (prefers-contrast: more) and (prefers-color-scheme: light) {
+    html[data-dash]:not([data-theme="dark"]) {
+      --text-2: #2e2e2e;
+      --text-3: #4d4d4d;
+      --control-border: #666666;
+      --border: #666666;
+      --border-strong: #666666;
+    }
+  }
+}
+
+/* ---------- 2. BASE ---------- */
+html[data-dash] {
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-14);
+  line-height: var(--lh-14);
+  scroll-padding-top: calc(var(--top-h) + var(--s-4));
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+/* body juga diberi latar: tanpa latar opak di body, Chrome merender teks (ClearType) berbeda di layar < 640px */
+html[data-dash] body {
+  background: var(--canvas);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+html[data-dash] :focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+/* cincin fokus di dalam wadah overflow (KPI, daftar, segmen, baris): ke dalam agar tidak terpotong.
+   Harus di sini (tanpa layer) — aturan di @layer components kalah dari aturan di atas. */
+html[data-dash] :is(a.stat, .proj-row, a.trow, .seg > a, .seg > button, summary.disclose, [data-row]):focus-visible {
+  outline-offset: -2px;
+}
+/* sentuh: tanpa kilat abu bawaan Android, tanpa jeda ketuk-ganda */
+html[data-dash] {
+  -webkit-tap-highlight-color: transparent;
+}
+html[data-dash] :is(a, button, summary, select, label) {
+  touch-action: manipulation;
+}
+/* drawer terbuka: halaman di belakang tidak ikut menggulir */
+html[data-dash].drawer-open {
+  overflow: hidden;
+}
+/* ada flash (sticky di bawah top bar): lompatan #id menyisakan ruang untuk pesannya. Kelas dari Dash.astro
+   (server, juga tanpa JS), dilepas forms.ts saat pesannya ditutup; bukan :has() di <html> (setiap perubahan DOM
+   memaksa cek ulang dari akar) */
+html[data-dash].has-flash {
+  scroll-padding-top: calc(var(--top-h) + var(--s-16) + var(--s-4));
+}
+html[data-dash] ::selection {
+  background: var(--selection);
+  color: var(--text);
+}
+html[data-dash] input,
+html[data-dash] textarea {
+  caret-color: var(--focus);
+}
+html[data-dash] button:disabled {
+  cursor: not-allowed;
+}
+/* tokens.css (tanpa layer) memberi p/li `text-wrap: pretty`, yang juga mengatur text-wrap-mode dan menang atas
+   .ell di @layer utilities: elipsis satu baris harus ditegaskan di sini (tanpa layer) */
+html[data-dash] :is(.ell, .me-name, .stat-label) {
+  white-space: nowrap;
+}
+/* ponsel: label tile KPI boleh dua baris (tidak dipotong) */
+@media (max-width: 639px) {
+  html[data-dash] .stats .stat-label {
+    white-space: normal;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-dash] *,
+  html[data-dash] *::before,
+  html[data-dash] *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- 3. KOMPONEN ---------- */
+@layer components {
+  /* --- tipografi --- */
+  [data-dash] .h1 {
+    font-size: var(--fs-24);
+    line-height: var(--lh-24);
+    font-weight: var(--fw-semibold);
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  [data-dash] .h2 {
+    font-size: var(--fs-16);
+    line-height: var(--lh-16);
+    font-weight: var(--fw-semibold);
+    letter-spacing: -0.01em;
+  }
+  [data-dash] .h3 {
+    font-size: var(--fs-14);
+    line-height: var(--lh-14);
+    font-weight: var(--fw-semibold);
+  }
+  [data-dash] .cap {
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    color: var(--text-2);
+  }
+  [data-dash] .link {
+    color: var(--text);
+    text-decoration: underline;
+    text-decoration-color: var(--underline);
+    text-underline-offset: var(--ul-offset);
+    text-decoration-thickness: 1px;
+  }
+  [data-dash] .link:hover {
+    text-decoration-color: var(--text);
+  }
+  [data-dash] .link-accent {
+    color: var(--link);
+    text-decoration: none;
+  }
+  [data-dash] .link-accent:hover {
+    text-decoration: underline;
+    text-underline-offset: var(--ul-offset);
+  }
+  /* tautan berwarna teks biasa, garis bawah hanya saat hover (judul kartu karya, proyek di kartu tugas) */
+  [data-dash] .link-plain {
+    color: inherit;
+    text-decoration: none;
+  }
+  [data-dash] .link-plain:hover {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: var(--ul-offset);
+  }
+  [data-dash] .ic {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  [data-dash] .ic-sm {
+    width: 14px;
+    height: 14px;
+  }
+
+  /* --- shell --- */
+  [data-dash] .skip {
+    position: fixed;
+    left: var(--s-3);
+    top: -64px;
+    z-index: var(--z-skip);
+    background: var(--raised);
+    color: var(--text);
+    border: 1px solid var(--control-border);
+    padding: var(--s-2) var(--s-3);
+    border-radius: var(--r-control);
+    text-decoration: none;
+    transition: top var(--dur) var(--ease);
+  }
+  [data-dash] .skip:focus {
+    top: var(--s-3);
+  }
+  [data-dash] .app {
+    display: grid;
+    grid-template-columns: var(--side-w) minmax(0, 1fr);
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  [data-dash] .app-side {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    z-index: var(--z-side);
+  }
+  [data-dash] .main-col {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  [data-dash] .main-col > main {
+    flex: 1;
+    min-width: 0;
+  }
+  [data-dash] .view {
+    padding: var(--s-6) var(--s-8) var(--s-16);
+    max-width: var(--view-max);
+    width: 100%;
+    margin: 0 auto;
+  }
+  [data-dash] .backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--backdrop);
+    z-index: var(--z-backdrop);
+  }
+
+  /* sidebar */
+  [data-dash] .side {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    padding: var(--s-3);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /* kepala sidebar setinggi top bar; garis bawahnya segaris dengan garis top bar */
+  [data-dash] .side-head {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-height: var(--top-h);
+    margin: calc(-1 * var(--s-3)) calc(-1 * var(--s-3)) 0;
+    padding: 0 var(--s-3) 0 var(--s-4);
+    border-bottom: 1px solid var(--border);
+  }
+  [data-dash] .side-head-link {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex: 1;
+    min-width: 0;
+    border-radius: var(--r-control);
+    color: inherit;
+    text-decoration: none;
+  }
+  [data-dash] .logo {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--r-control);
+    background: var(--logo-bg);
+    box-shadow: inset 0 0 0 1px var(--logo-ring);
+    color: var(--logo-fg);
+    flex: none;
+    forced-color-adjust: none;
+  }
+  /* merek (Brand.astro): logo + judul + baris kedua; is-lg = halaman login */
+  [data-dash] .brand {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-width: 0;
+  }
+  [data-dash] .brand-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+  [data-dash] .brand-title {
+    font-weight: var(--fw-semibold);
+    font-size: var(--fs-14);
+    line-height: var(--lh-13);
+    letter-spacing: -0.02em;
+  }
+  [data-dash] .brand.is-lg .brand-title {
+    font-size: var(--fs-16);
+    line-height: var(--lh-16);
+  }
+  /* teks kecil redup di sidebar */
+  [data-dash] .brand-sub,
+  [data-dash] .side-label,
+  [data-dash] .me-role {
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    color: var(--text-3);
+  }
+  [data-dash] .side-label {
+    padding: 0 var(--s-2);
+  }
+  [data-dash] .nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  [data-dash] .nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-height: var(--hit);
+    padding: 0 var(--s-2);
+    border-radius: var(--r-control);
+    color: var(--text-2);
+    text-decoration: none;
+    transition: var(--tr-colors);
+  }
+  [data-dash] .nav-item:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  [data-dash] .nav-item:active {
+    background: var(--selected);
+  }
+  [data-dash] .nav-item[aria-current="page"] {
+    background: var(--selected);
+    color: var(--text);
+    font-weight: var(--fw-medium);
+  }
+  [data-dash] .nav-item[aria-current="page"]::before {
+    content: "";
+    position: absolute;
+    left: calc(-1 * var(--s-3));
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--text);
+    forced-color-adjust: none;
+  }
+  [data-dash] .nav-label {
+    flex: 1;
+    min-width: 0;
+  }
+  [data-dash] .nav-count {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-inline);
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    color: var(--text);
+    font-weight: var(--fw-medium);
+  }
+  [data-dash] .side-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--border);
+  }
+  [data-dash] .side-foot {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--border);
+  }
+  [data-dash] .foot-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-2);
+  }
+  [data-dash] .me {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-width: 0;
+    padding: 0 var(--s-1);
+  }
+  /* nama + baris kedua bertumpuk (akun di sidebar; Person dengan `sub`) */
+  [data-dash] .me-text,
+  [data-dash] .person-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  [data-dash] .me-name {
+    font-weight: var(--fw-medium);
+  }
+  [data-dash] .theme-sw {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-control);
+    background: var(--sidebar);
+  }
+  [data-dash] .theme-sw button {
+    display: grid;
+    place-items: center;
+    width: var(--hit-sm);
+    height: var(--hit-sm);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--r-inner);
+    background: transparent;
+    color: var(--text-2);
+    transition: var(--tr-colors);
+  }
+  [data-dash] .theme-sw button:hover {
+    color: var(--text);
+    background: var(--hover);
+  }
+  [data-dash] .theme-sw button[aria-checked="true"] {
+    background: var(--raised);
+    border-color: var(--control-border);
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* top bar */
+  [data-dash] .top {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-top);
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    min-height: var(--top-h);
+    /* tepi kiri/kanan = tepi konten .view (juga >=1504px, saat .view dibatasi --view-max dan di tengah) */
+    padding: 0 max(var(--s-8), calc((100% - var(--view-max)) / 2 + var(--s-8)));
+    background: color-mix(in oklab, var(--canvas) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  [data-dash] .crumbs {
+    flex: 1;
+    min-width: 0;
+  }
+  [data-dash] .crumbs ol {
+    display: flex;
+    align-items: center;
+    gap: var(--s-1);
+    min-width: 0;
+  }
+  [data-dash] .crumbs li {
+    display: flex;
+    align-items: center;
+    gap: var(--s-1);
+    min-width: 0;
+    white-space: nowrap;
+  }
+  /* crumb induk tidak pernah menyusut; hanya crumb terakhir (halaman ini) dipotong dengan elipsis, satu baris */
+  [data-dash] .crumbs li:not(:last-child) {
+    flex: none;
+  }
+  [data-dash] .crumbs li:last-child {
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+  [data-dash] .crumbs a,
+  [data-dash] .crumbs .c {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--hit-xs);
+    padding: 2px 6px;
+    border-radius: var(--r-inner);
+    color: var(--text-2);
+    text-decoration: none;
+  }
+  [data-dash] .crumbs a:hover {
+    color: var(--text);
+    background: var(--hover);
+  }
+  [data-dash] .crumbs [aria-current] {
+    min-height: 0;
+    min-width: 0;
+    max-width: 100%;
+    color: var(--text);
+    font-weight: var(--fw-medium);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+  }
+  [data-dash] .crumbs .ic {
+    color: var(--text-3);
+    width: 12px;
+    height: 12px;
+  }
+  /* ponsel/tablet (< 900px): tautan "‹ Bagian" menggantikan crumb halaman detail (h1 sudah menamai halaman) */
+  [data-dash] .crumb-up {
+    display: none;
+    align-items: center;
+    gap: var(--s-1);
+    min-height: var(--hit-xs);
+    padding: 0 var(--s-2);
+    margin-left: calc(var(--s-2) * -1);
+    border-radius: var(--r-control);
+    color: var(--text-2);
+    font-weight: var(--fw-medium);
+    text-decoration: none;
+  }
+  [data-dash] .crumb-up:hover {
+    color: var(--text);
+    background: var(--hover);
+  }
+  [data-dash] .top-tools {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex: none;
+  }
+
+  /* --- tombol --- */
+  [data-dash] .btn,
+  [data-dash] .btn-primary,
+  [data-dash] .btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--gap-inline);
+    min-height: var(--hit);
+    padding: 0 var(--s-3);
+    border-radius: var(--r-control);
+    border: 1px solid var(--control-border);
+    background: var(--panel);
+    color: var(--text);
+    font-weight: var(--fw-medium);
+    font-size: var(--fs-14);
+    line-height: var(--lh-14);
+    white-space: nowrap;
+    text-decoration: none;
+    transition: var(--tr-colors);
+  }
+  [data-dash] .btn:hover {
+    background: var(--hover);
+    border-color: var(--control-border-hover);
+  }
+  [data-dash] .btn:active {
+    background: var(--selected);
+  }
+  /* tombol toggle (<button aria-pressed>): aktif = latar selected + cincin --control-border + tebal */
+  /* aktif = cincin --text di atas panel (latar abu terbaca seperti nonaktif di tema terang) */
+  [data-dash] .btn[aria-pressed="true"] {
+    background: var(--panel);
+    box-shadow: inset 0 0 0 1px var(--text);
+    color: var(--text);
+    font-weight: var(--fw-semibold);
+  }
+  [data-dash] .btn[aria-pressed="false"] {
+    color: var(--text-2);
+  }
+  [data-dash] .btn-primary {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--on-primary);
+  }
+  [data-dash] .btn-primary:hover,
+  [data-dash] .btn-primary:active {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+  }
+  /* tombol tanpa bingkai (gaya ghost referensi) */
+  [data-dash] .btn-quiet {
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-2);
+  }
+  [data-dash] .btn-quiet:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  [data-dash] .btn-danger {
+    color: var(--critical);
+    border-color: color-mix(in oklab, var(--critical) 45%, transparent);
+  }
+  [data-dash] .btn-danger:hover {
+    background: color-mix(in oklab, var(--critical) var(--tint), var(--panel));
+  }
+  /* hapus yang tenang (baris berulang: inbox, popover tugas): tanpa bingkai, merah saat hover/fokus */
+  [data-dash] .btn-danger.is-quiet {
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-2);
+  }
+  [data-dash] .btn-danger.is-quiet:is(:hover, :focus-visible) {
+    color: var(--critical);
+    background: color-mix(in oklab, var(--critical) var(--tint), var(--panel));
+  }
+  [data-dash] .btn-sm {
+    min-height: var(--hit-sm);
+    padding: 0 var(--s-2);
+    font-size: var(--fs-13);
+  }
+  [data-dash] :is(.btn, .btn-primary, .btn-danger):disabled,
+  [data-dash] :is(.btn, .btn-primary, .btn-danger)[aria-disabled="true"] {
+    color: var(--text-3);
+    background: transparent;
+    border-color: var(--border-strong);
+    box-shadow: none;
+  }
+  /* sedang mengirim (forms.ts): tombol tetap terbaca, kursor tunggu */
+  [data-dash] [data-pending] {
+    cursor: progress;
+  }
+  [data-dash] .btn-icon {
+    display: inline-grid;
+    place-items: center;
+    width: var(--hit);
+    height: var(--hit);
+    flex: none;
+    padding: 0;
+    border-radius: var(--r-control);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-2);
+    transition: var(--tr-colors);
+  }
+  [data-dash] .btn-icon:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  [data-dash] .btn-icon.bordered {
+    border-color: var(--control-border);
+    background: var(--panel);
+  }
+
+  /* --- segmented control: <div class="seg"> berisi <button aria-pressed> atau <a aria-current> --- */
+  [data-dash] .seg {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--r-control);
+    background: var(--panel);
+    min-width: 0;
+    max-width: 100%;
+    /* satu baris; bila tidak muat digulir mendatar (forms.ts memberi .is-scroll / .at-end untuk pudar di tepi) */
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    /* containing block untuk .vh (position: absolute) di dalam segmen: tanpa ini teks tersembunyinya lolos dari
+       penggulung dan melebarkan halaman */
+    position: relative;
+  }
+  [data-dash] .seg::-webkit-scrollbar {
+    display: none;
+  }
+  /* pudar di tepi kanan selama masih ada segmen tersembunyi (masker alfa, bukan warna) */
+  [data-dash] .seg.is-scroll:not(.at-end) {
+    mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+  }
+  [data-dash] .seg > button,
+  [data-dash] .seg > a {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-inline);
+    min-height: var(--seg-h);
+    padding: 0 var(--s-3);
+    border: 0;
+    border-radius: var(--r-inner);
+    background: transparent;
+    color: var(--text-2);
+    font-size: var(--fs-13);
+    font-weight: var(--fw-medium);
+    white-space: nowrap;
+    text-decoration: none;
+    transition: var(--tr-colors);
+  }
+  [data-dash] .seg > :is(button, a):hover {
+    color: var(--text);
+    background: var(--hover);
+  }
+  [data-dash] .seg > button[aria-pressed="true"],
+  [data-dash] .seg > a[aria-current] {
+    background: var(--selected);
+    color: var(--text);
+    font-weight: var(--fw-semibold);
+    box-shadow: inset 0 0 0 1px var(--control-border);
+  }
+  /* hitungan kecil di belakang label segmen */
+  [data-dash] .seg-n {
+    color: var(--text-2);
+    font-size: var(--fs-12);
+    font-weight: var(--fw-medium);
+  }
+  /* form status (StatusSelect): select + tombol Simpan. Dengan JS, Simpan hanya tampil setelah pilihan
+     diganti lewat keyboard (.is-dirty, forms.ts); tanpa JS selalu tampil. */
+  [data-dash] .status-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+    min-width: 0;
+  }
+  [data-dash].js .status-save:not(.is-dirty) {
+    display: none;
+  }
+  /* tautan toggle bergaya kotak centang ("Tampilkan yang selesai"): .btn.btn-sm.tgl-link > .tgl-box */
+  [data-dash] .tgl-link {
+    font-size: var(--fs-13);
+  }
+  [data-dash] .tgl-box {
+    display: inline-grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--r-inner);
+    color: var(--on-primary);
+  }
+  [data-dash] .tgl-link.is-on .tgl-box {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+  [data-dash] .tgl-box .ic {
+    width: 12px;
+    height: 12px;
+    stroke-width: 2;
+  }
+
+  /* --- input / select / textarea --- */
+  [data-dash] .input {
+    width: 100%;
+    min-height: var(--hit);
+    border: 1px solid var(--control-border);
+    border-radius: var(--r-control);
+    background-color: var(--panel);
+    color: var(--text);
+    padding: 0 var(--s-3);
+    font-size: var(--fs-14);
+    line-height: var(--lh-14);
+    outline-offset: 0;
+    transition: var(--tr-colors);
+  }
+  /* kontrol ringkas sejajar .btn-sm (status inbox, Discord ID di tabel tim) */
+  [data-dash] .input-sm {
+    min-height: var(--hit-sm);
+    font-size: var(--fs-13);
+  }
+  [data-dash] select.input {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: var(--select-pad);
+    max-width: 100%;
+    background-image: var(--select-chev);
+    background-repeat: no-repeat;
+    background-position: right var(--s-2) center;
+  }
+  [data-dash] select.input option {
+    background-color: var(--raised);
+    color: var(--text);
+  }
+  [data-dash] .input:hover {
+    border-color: var(--control-border-hover);
+  }
+  [data-dash] .input:disabled {
+    color: var(--text-3);
+    border-color: var(--border-strong);
+  }
+  [data-dash] .input::placeholder {
+    color: var(--text-3);
+  }
+  [data-dash] textarea.input {
+    padding: var(--s-2) var(--s-3);
+    min-height: 84px;
+    resize: vertical;
+  }
+  [data-dash] .input[aria-invalid="true"] {
+    border-color: var(--critical);
+    box-shadow: inset 0 0 0 1px var(--critical);
+  }
+  /* input warna (editor karya) */
+  [data-dash] .input-color {
+    width: 56px;
+    height: var(--hit);
+    padding: 2px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--r-control);
+    background: var(--panel);
+    cursor: pointer;
+  }
+  [data-dash] .input-color::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+  [data-dash] .input-color::-webkit-color-swatch {
+    border: 0;
+    border-radius: var(--r-inner);
+  }
+  [data-dash] .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-inline);
+    min-width: 0;
+  }
+  [data-dash] .field > label {
+    font-size: var(--fs-13);
+    line-height: var(--lh-13);
+    color: var(--text-2);
+    font-weight: var(--fw-medium);
+  }
+  [data-dash] .field .opt {
+    font-weight: var(--fw-regular);
+    color: var(--text-3);
+  }
+  /* pesan error di bawah kontrol (Field `error`, atau disisipkan forms.ts) */
+  [data-dash] .err {
+    display: flex;
+    gap: var(--gap-inline);
+    align-items: flex-start;
+    color: var(--critical);
+    font-size: var(--fs-13);
+    line-height: var(--lh-13);
+    font-weight: var(--fw-medium);
+  }
+  [data-dash] .err .ic {
+    margin-top: 2px;
+  }
+  [data-dash] .chk {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-height: var(--hit);
+  }
+  [data-dash] .chk input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
+  }
+  [data-dash] .filters {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2) var(--s-3);
+    flex-wrap: wrap;
+  }
+  /* item di ujung kanan baris .filters (turun ke baris sendiri < 900px) */
+  [data-dash] .filters-end {
+    margin-left: auto;
+  }
+
+  /* --- status dot & badge ---
+     .status = titik + teks; .badge = chip kecil.
+     Nada: tone-neutral | tone-info | tone-accent | tone-warn | tone-ok | tone-crit
+     (.dot.tone-* berwarna; badge bernada otomatis mendapat titik di depannya). */
+  [data-dash] .dot {
+    display: inline-block;
+    width: var(--dot);
+    height: var(--dot);
+    border-radius: 50%;
+    flex: none;
+    background: var(--tone-fill, var(--text-3));
+    forced-color-adjust: none;
+  }
+  [data-dash] .status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-inline);
+    white-space: nowrap;
+  }
+  [data-dash] .tone-neutral {
+    --tone: var(--text-3);
+    --tone-fill: var(--text-3);
+  }
+  [data-dash] .tone-info {
+    --tone: var(--info);
+    --tone-fill: var(--info);
+  }
+  [data-dash] .tone-accent {
+    --tone: var(--tone-purple);
+    --tone-fill: var(--tone-purple);
+  }
+  /* amber: teks memakai --warning, titik/isi memakai --warning-fill (#a35200 sebagai titik terlihat cokelat) */
+  [data-dash] .tone-warn {
+    --tone: var(--warning);
+    --tone-fill: var(--warning-fill);
+  }
+  [data-dash] .tone-ok {
+    --tone: var(--ok);
+    --tone-fill: var(--ok);
+  }
+  [data-dash] .tone-crit {
+    --tone: var(--critical);
+    --tone-fill: var(--critical);
+  }
+  [data-dash] .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-inline);
+    min-height: var(--badge-h);
+    padding: 0 var(--s-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-full);
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    font-weight: var(--fw-medium);
+    color: var(--text);
+    white-space: nowrap;
+    width: fit-content;
+  }
+  [data-dash] .badge[class*="tone-"]::before {
+    content: "";
+    width: var(--dot);
+    height: var(--dot);
+    border-radius: 50%;
+    background: var(--tone-fill);
+    flex: none;
+    forced-color-adjust: none;
+  }
+
+  /* --- avatar --- */
+  [data-dash] .avatar {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--selected);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+    color: var(--text);
+    font-size: var(--fs-12);
+    font-weight: var(--fw-semibold);
+    letter-spacing: -0.02em;
+  }
+  [data-dash] .avatar-lg {
+    width: 32px;
+    height: 32px;
+    font-size: var(--fs-12);
+  }
+  [data-dash] .avatar.is-empty {
+    background: transparent;
+    box-shadow: none;
+    border: 1px dashed var(--border-strong);
+    color: var(--text-3);
+  }
+  [data-dash] .avatar.is-empty .ic {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* --- progress --- */
+  [data-dash] .progress {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-width: 0;
+  }
+  /* .progress-bar (role=progressbar) > .progress-track > .progress-fill, + .progress-mark (waktu berjalan) */
+  [data-dash] .progress-bar {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    height: 12px;
+    min-width: 0;
+  }
+  [data-dash] .progress-track {
+    position: relative;
+    flex: 1;
+    height: 4px;
+    border-radius: var(--r-full);
+    background: var(--border-strong);
+    overflow: hidden;
+  }
+  [data-dash] .progress-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: inherit;
+    background: var(--text);
+    forced-color-adjust: none;
+  }
+  [data-dash] .progress-mark {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    border-radius: 1px;
+    background: var(--text-2);
+  }
+  [data-dash] .progress.is-done .progress-fill {
+    background: var(--ok);
+  }
+  [data-dash] .progress.is-behind .progress-fill {
+    background: var(--warning-fill);
+  }
+  [data-dash] .progress.is-late .progress-fill {
+    background: var(--critical);
+  }
+  [data-dash] .progress-val {
+    min-width: 36px;
+    text-align: right;
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    color: var(--text-2);
+    white-space: nowrap;
+  }
+  /* proyek tanpa tugas: teks, bukan 0% */
+  [data-dash] .progress-none {
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    color: var(--text-3);
+  }
+
+  /* --- deadline (Due.astro): tanggal + jarak ("lewat 3 hari" / "5 hari lagi"); lewat = ikon + teks + merah --- */
+  [data-dash] .due {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0 var(--s-1);
+    min-width: 0;
+  }
+  /* ikon + tanggal tidak pernah terpisah baris; hanya jarak relatif (.due-rel) yang boleh turun */
+  [data-dash] .due-main {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
+    white-space: nowrap;
+  }
+  [data-dash] .due-rel {
+    white-space: nowrap;
+  }
+  [data-dash] .due.is-late {
+    color: var(--critical);
+  }
+  [data-dash] .due.is-late .due-rel {
+    font-weight: var(--fw-semibold);
+  }
+  [data-dash] .due.is-soon .due-rel {
+    color: var(--text);
+    font-weight: var(--fw-medium);
+  }
+
+  /* --- permukaan: panel, KPI, daftar, tabel (satu bingkai) --- */
+  [data-dash] .panel,
+  [data-dash] .stats,
+  [data-dash] .list,
+  [data-dash] .proj,
+  [data-dash] .tbl-wrap {
+    border: 1px solid var(--border);
+    border-radius: var(--r-panel);
+    background: var(--panel);
+  }
+  [data-dash] .panel {
+    position: relative;
+    min-width: 0;
+  }
+  [data-dash] .pad {
+    padding: var(--s-4) var(--s-5);
+  }
+
+  /* --- komposisi panel: kepala / isi / kaki bergaris ---
+     <section class="panel"><div class="panel-head"><h2 class="h3">…</h2><p class="cap">…</p></div>
+     <div class="panel-body">…</div><div class="panel-foot">…tombol…</div></section>
+     (komponen Panel.astro) */
+  [data-dash] .panel-head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    border-bottom: 1px solid var(--border);
+  }
+  [data-dash] .panel-head,
+  [data-dash] .panel-foot {
+    padding: var(--s-3) var(--s-5);
+  }
+  [data-dash] .panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-4);
+    padding: var(--s-4) var(--s-5) var(--s-5);
+  }
+  [data-dash] .panel-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+    border-top: 1px solid var(--border);
+  }
+  /* garis pemisah atas untuk bagian berikutnya di dalam panel (mis. isi <details class="panel">) */
+  [data-dash] .sep {
+    border-top: 1px solid var(--border);
+  }
+  /* zona hapus: teks penjelasan + tombol .btn-danger */
+  [data-dash] .danger-zone {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+  }
+  [data-dash] .danger-zone > :first-child {
+    flex: 1 1 14rem;
+    min-width: 0;
+  }
+
+  /* disclosure (komponen Disclosure.astro: <details> > summary.disclose) */
+  [data-dash] details > summary.disclose {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-height: var(--hit);
+    font-weight: var(--fw-medium);
+  }
+  [data-dash] details > summary.disclose {
+    list-style: none;
+  }
+  [data-dash] details > summary.disclose::-webkit-details-marker {
+    display: none;
+  }
+  [data-dash] details > summary.disclose .ic {
+    color: var(--text-2);
+    transition: transform var(--dur) var(--ease);
+  }
+  /* chevron selalu di tepi kanan (semua disclosure) */
+  [data-dash] summary.disclose > .ic:last-child {
+    margin-left: auto;
+  }
+  /* disclosure "Tambah …" yang tertutup: bingkai putus-putus (ajakan, bukan panel berisi) */
+  [data-dash] details.is-add:not([open]) {
+    border-style: dashed;
+  }
+  /* hanya chevron (ikon terakhir) yang berputar, bukan ikon di depan label */
+  [data-dash] details[open] > summary.disclose .ic:last-child {
+    transform: rotate(180deg);
+  }
+
+  /* --- kepala halaman & section --- */
+  [data-dash] .sec {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+    min-width: 0;
+  }
+  [data-dash] .sec-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+  }
+  [data-dash] .sec-head .cap {
+    flex-basis: 100%;
+  }
+  [data-dash] .page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--s-3) var(--s-6);
+    margin-bottom: calc(var(--s-6) + var(--s-1));
+  }
+  [data-dash] .page-head-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  [data-dash] .page-head-text > :not(.h1, .answer) {
+    margin-top: var(--s-2);
+  }
+  /* subjudul 14/20 (teks sekunder ala Vercel), di semua lebar */
+  [data-dash] .answer {
+    font-size: var(--fs-14);
+    line-height: var(--lh-14);
+    color: var(--text-2);
+    max-width: 75ch;
+  }
+
+  /* --- tata letak --- */
+  [data-dash] .stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-8);
+  }
+  [data-dash] .cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: var(--s-6);
+    align-items: start;
+  }
+  [data-dash] .right-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-6);
+    min-width: 0;
+  }
+  [data-dash] .form-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-4);
+  }
+  /* grid 2 kolom; .full = selebar baris; 1 kolom di ponsel */
+  [data-dash] .form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-4);
+  }
+  [data-dash] .form-grid > .full {
+    grid-column: 1 / -1;
+  }
+  /* varian 4 kolom (form proyek): 1 / 2 / 4 kolom (lihat responsif); .half = 2 kolom dari 4 */
+  /* avatar + nama satu baris (komponen Person.astro); size="lg" = avatar 32px + jarak 12px, `sub` = baris kedua */
+  [data-dash] .person {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-width: 0;
+  }
+  [data-dash] .person.is-lg {
+    gap: var(--s-3);
+  }
+  [data-dash] .person-name {
+    font-weight: var(--fw-medium);
+  }
+  [data-dash] .person-text .sub {
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    color: var(--text-2);
+  }
+
+  /* notice / flash */
+  [data-dash] .notice {
+    display: flex;
+    gap: var(--s-3);
+    align-items: flex-start;
+    padding: var(--s-3) var(--s-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-panel);
+    background: var(--panel);
+    color: var(--text);
+    font-size: var(--fs-13);
+    line-height: var(--lh-13);
+  }
+  [data-dash] .notice .ic {
+    margin-top: 1px;
+    color: var(--tone, var(--text-2));
+  }
+  [data-dash] .notice:is(.tone-ok, .tone-crit, .tone-warn, .tone-info) {
+    border-color: color-mix(in oklab, var(--tone) 45%, transparent);
+    background: color-mix(in oklab, var(--tone) var(--tint), var(--panel));
+  }
+  /* flash: menempel di bawah top bar saat menggulir ke baris yang diubah; bisa ditutup (tautan tanpa ?ok/err) */
+  /* menempel tepat di bawah top bar; strip 8px di atasnya diisi kanvas (konten yang digulir tidak terlihat di celah) */
+  [data-dash] .flash-wrap {
+    position: sticky;
+    top: var(--top-h);
+    z-index: calc(var(--z-top) - 1);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+    padding-top: var(--s-2);
+    margin-top: calc(-1 * var(--s-2));
+    margin-bottom: var(--s-6);
+    background: linear-gradient(var(--canvas) var(--s-2), transparent var(--s-2));
+  }
+  [data-dash] .flash {
+    align-items: center;
+    padding-right: var(--s-2);
+    box-shadow: var(--shadow-pop);
+  }
+  [data-dash] .flash > span {
+    flex: 1;
+    min-width: 0;
+  }
+  [data-dash] .flash .ic {
+    margin-top: 0;
+  }
+  [data-dash] .flash .btn-icon {
+    width: var(--hit-sm);
+    height: var(--hit-sm);
+  }
+  [data-dash] .flash .btn-icon .ic {
+    color: var(--text-2);
+  }
+
+  /* empty state (komponen EmptyState.astro) */
+  [data-dash] .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s-2);
+    padding: var(--s-6);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--r-panel);
+    color: var(--text-2);
+  }
+  [data-dash] .empty .h3 {
+    color: var(--text);
+  }
+  [data-dash] .empty .actions {
+    display: flex;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+    margin-top: var(--s-1);
+  }
+  /* empty state halaman (bukan ringkas): di tengah, ikon dalam lingkaran, teks 14px maks. 44ch */
+  [data-dash] .empty:not(.is-compact) {
+    align-items: center;
+    text-align: center;
+    padding: var(--s-12) var(--s-6);
+  }
+  [data-dash] .empty:not(.is-compact) > p {
+    max-width: 44ch;
+  }
+  [data-dash] .empty:not(.is-compact) .actions {
+    justify-content: center;
+  }
+  [data-dash] .empty-ic {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-bottom: var(--s-2);
+    border-radius: var(--r-full);
+    background: var(--hover);
+    color: var(--text-2);
+  }
+  [data-dash] .empty-ic .ic {
+    width: 20px;
+    height: 20px;
+  }
+  /* ringkas: di dalam panel / kolom (EmptyState compact) */
+  [data-dash] .empty.is-compact {
+    border: 0;
+    border-radius: 0;
+    padding: var(--s-4);
+    gap: var(--s-1);
+  }
+  [data-dash] .tcol .empty.is-compact {
+    align-items: center;
+    text-align: center;
+    padding: var(--s-6) var(--s-3);
+    color: var(--text-3);
+  }
+
+  /* --- data --- */
+  /* KPI tiles */
+  [data-dash] .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(var(--stat-min, 176px), 1fr));
+    overflow: hidden;
+  }
+  [data-dash] .stat {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    padding: var(--s-4);
+    min-width: 0;
+    text-decoration: none;
+    color: inherit;
+    box-shadow:
+      -1px 0 0 var(--border),
+      0 -1px 0 var(--border);
+  }
+  [data-dash] .stat-label {
+    min-width: 0;
+    font-size: var(--fs-13);
+    line-height: var(--lh-13);
+    color: var(--text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  [data-dash] .stat-value {
+    font-size: var(--fs-24);
+    line-height: var(--lh-24);
+    font-weight: var(--fw-semibold);
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+  }
+  /* ikon/titik + teks (<span>): ikon tetap di baris pertama, teks membungkus di sampingnya */
+  [data-dash] .stat-meta {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--gap-inline);
+    flex-wrap: nowrap;
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    color: var(--text-2);
+  }
+  [data-dash] .stat-meta > span:last-child {
+    min-width: 0;
+  }
+  [data-dash] .stat-meta > .ic {
+    margin-top: 1px;
+  }
+  [data-dash] .stat-meta > .dot {
+    margin-top: 4px;
+  }
+  /* pemilih cakupan + tile + baris "tanpa PJ" = satu kelompok */
+  [data-dash] .stat-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+  }
+
+  /* list (baris dalam panel) */
+  [data-dash] .list {
+    position: relative;
+    overflow: hidden;
+  }
+  [data-dash] .rows > li + li,
+  [data-dash] .list > li + li {
+    border-top: 1px solid var(--border);
+  }
+  [data-dash] .trow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px var(--s-3);
+    padding: var(--s-3) var(--s-4);
+    align-items: baseline;
+  }
+  [data-dash] a.trow {
+    color: inherit;
+    text-decoration: none;
+  }
+  [data-dash] .trow-title {
+    min-width: 0;
+    font-weight: var(--fw-medium);
+  }
+  /* baris kedua: bagian dipisah "·" lewat CSS (tanpa titik yatim di ujung baris); nama dipotong, deadline utuh */
+  [data-dash] .trow .meta {
+    grid-column: 1 / -1;
+    color: var(--text-2);
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    display: flex;
+    gap: var(--s-1);
+    flex-wrap: nowrap;
+    align-items: center;
+    min-width: 0;
+  }
+  [data-dash] .trow .meta > .ell {
+    flex: 0 1 auto;
+  }
+  [data-dash] .trow .meta > .due {
+    flex: none;
+  }
+  [data-dash] .trow .meta > :not(:first-child)::before {
+    content: "·";
+    margin-right: var(--s-1);
+    color: var(--text-3);
+  }
+  [data-dash] .trow .meta > .due:not(:first-child)::before {
+    margin-right: 0;
+  }
+  /* tautan "Lihat semua (n)" di bawah daftar yang dibatasi */
+  [data-dash] .list-more {
+    display: flex;
+    justify-content: flex-end;
+    padding: var(--s-2) var(--s-4);
+    border-top: 1px solid var(--border);
+  }
+
+  /* daftar proyek bergaris (header + baris tautan): nama | status | progres | PJ | chevron */
+  [data-dash] .proj {
+    overflow: hidden;
+  }
+  [data-dash] .proj-h,
+  [data-dash] .proj-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) 8.5rem minmax(10rem, 13rem) var(--hit-sm) 16px;
+    gap: var(--s-4);
+    align-items: center;
+    padding: 0 var(--s-4);
+  }
+  [data-dash] .proj-h {
+    min-height: var(--row-h-head);
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    color: var(--text-2);
+    border-bottom: 1px solid var(--border);
+  }
+  [data-dash] .proj-row {
+    min-height: var(--row-h-lg);
+    padding-top: var(--s-2);
+    padding-bottom: var(--s-2);
+    text-decoration: none;
+    color: inherit;
+  }
+  [data-dash] li + li > .proj-row {
+    border-top: 1px solid var(--border);
+  }
+  [data-dash] .proj-name {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  /* nama: maks. 2 baris (nama lebih penting dari klien) */
+  [data-dash] .proj-name b {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-weight: var(--fw-medium);
+    overflow-wrap: anywhere;
+  }
+  /* baris kedua: klien (1 baris, elipsis) · deadline. Tiap bagian membawa "·" di depannya;
+     kolom selebar --sep di kiri dipotong (clip-path), jadi bagian yang memulai baris tidak berawalan "·" */
+  [data-dash] .proj-sub {
+    --sep: 0.9em;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    min-width: 0;
+    margin-left: calc(-1 * var(--sep));
+    clip-path: inset(0 0 0 var(--sep));
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    color: var(--text-2);
+  }
+  [data-dash] .proj-sub > .ell {
+    max-width: 100%;
+  }
+  [data-dash] .proj-sub > :is(.ell, .due)::before {
+    content: "·";
+    display: inline-block;
+    flex: none;
+    width: var(--sep);
+    text-align: center;
+    color: var(--text-3);
+  }
+  [data-dash] .proj-sub > .due::before {
+    margin-right: calc(-1 * var(--s-1));
+  }
+  [data-dash] .proj-h > .r {
+    text-align: right;
+  }
+  [data-dash] .proj-state {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+  }
+  [data-dash] .proj-prog {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  [data-dash] .proj-prog .sub {
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    color: var(--text-2);
+  }
+  [data-dash] .proj-row > .ic {
+    color: var(--text-3);
+  }
+
+  /* tabel data */
+  [data-dash] .tbl-wrap {
+    position: relative;
+    width: 100%;
+    overflow-x: auto;
+  }
+  [data-dash] .tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--fs-13);
+    line-height: var(--lh-13);
+  }
+  [data-dash] .tbl th,
+  [data-dash] .tbl td {
+    padding: var(--s-2) var(--s-3);
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border);
+  }
+  [data-dash] .tbl thead th {
+    font-weight: var(--fw-medium);
+    color: var(--text-2);
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    white-space: nowrap;
+    background: var(--panel);
+    height: var(--row-h-head);
+  }
+  [data-dash] .tbl abbr[title] {
+    text-decoration: none;
+    cursor: help;
+  }
+  [data-dash] .tbl tbody tr:last-child > * {
+    border-bottom: 0;
+  }
+  [data-dash] .tbl .n {
+    text-align: right;
+    white-space: nowrap;
+  }
+  [data-dash] .tbl th:first-child,
+  [data-dash] .tbl td:first-child {
+    padding-left: var(--s-4);
+  }
+  [data-dash] .tbl th:last-child,
+  [data-dash] .tbl td:last-child {
+    padding-right: var(--s-4);
+  }
+  [data-dash] .tbl .rl {
+    color: var(--text);
+    text-decoration: none;
+    font-weight: var(--fw-medium);
+  }
+  [data-dash] .tbl .rl:hover {
+    text-decoration: underline;
+    text-underline-offset: var(--ul-offset);
+  }
+  [data-dash] .tbl td {
+    overflow-wrap: anywhere;
+  }
+  [data-dash] .tbl .sub {
+    display: block;
+    color: var(--text-2);
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    margin-top: 2px;
+  }
+
+  /* hover hanya pada baris yang memang tautan (KPI, daftar, proyek, baris tabel dengan .rl).
+     Baris berisi kontrol form (tugas, tabel tim) tidak diberi latar hover. */
+  [data-dash] a.stat,
+  [data-dash] a.trow,
+  [data-dash] .proj-row,
+  [data-dash] .tbl tbody tr:has(.rl) {
+    transition: background-color var(--dur) var(--ease);
+  }
+  [data-dash] a.stat:hover,
+  [data-dash] a.trow:hover,
+  [data-dash] .proj-row:hover,
+  [data-dash] .tbl tbody tr:has(.rl):hover {
+    background: var(--hover);
+  }
+  [data-dash] a.stat:active,
+  [data-dash] .proj-row:active {
+    background: var(--selected);
+  }
+  [data-dash] summary.disclose:hover {
+    background: var(--hover);
+  }
+  /* baris tujuan setelah aksi (_back = …#task-id / #inq-id / #pf-id / #user-id): disorot + fokus (forms.ts) */
+  [data-dash] [data-row] {
+    scroll-margin-top: calc(var(--top-h) + var(--s-16) + var(--s-4));
+  }
+  [data-dash] [data-row]:target {
+    box-shadow: inset 3px 0 0 var(--control-border);
+  }
+  [data-dash] [data-row]:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* --- popover (<details class="pop"> > summary + .pop-panel): tugas (Edit), tim (Kelola) ---
+     forms.ts: Esc / klik di luar menutup, hanya satu terbuka, tetap di dalam viewport (.is-up / .is-left),
+     fokus kembali ke summary. Di bawah 640px panel jadi lembar bawah (fixed). */
+  [data-dash] .pop {
+    position: relative;
+  }
+  [data-dash] .pop > summary {
+    list-style: none;
+  }
+  [data-dash] .pop > summary::-webkit-details-marker {
+    display: none;
+  }
+  [data-dash] .pop[open] > summary {
+    background: var(--selected);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--control-border);
+  }
+  [data-dash] .pop-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + var(--s-1));
+    z-index: var(--z-pop);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+    width: min(22rem, calc(100vw - 2 * var(--s-4)));
+    max-height: min(36rem, calc(100vh - var(--top-h) - 2 * var(--s-4)));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--s-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-panel);
+    background: var(--raised);
+    box-shadow: var(--shadow-pop);
+    text-align: left;
+  }
+  [data-dash] .pop.is-up > .pop-panel {
+    top: auto;
+    bottom: calc(100% + var(--s-1));
+  }
+  [data-dash] .pop.is-left > .pop-panel {
+    right: auto;
+    left: 0;
+  }
+  /* kepala lembar bawah (< 640px): judul + tutup; di popover desktop disembunyikan */
+  [data-dash] .pop-head {
+    display: none;
+    align-items: center;
+    gap: var(--s-2);
+    margin: calc(-1 * var(--s-2)) calc(-1 * var(--s-2)) 0 0;
+  }
+  [data-dash] .pop-head > :first-child {
+    flex: 1;
+  }
+  /* baris tombol di kaki popover: Simpan + Batal; hapus dipisah garis di bawahnya */
+  [data-dash] .pop-foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+  [data-dash] .pop-sep {
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--border);
+  }
+
+  /* --- tugas ---
+     Komponen: TaskCard (kartu papan), TaskRow (baris daftar berkelompok),
+     keduanya memakai TaskActions (StatusSelect + popover edit/hapus). */
+  [data-dash] .task-title {
+    font-weight: var(--fw-medium);
+    overflow-wrap: anywhere;
+  }
+  [data-dash] .task-title.is-done {
+    color: var(--text-2);
+    text-decoration: line-through;
+  }
+  [data-dash] .task-due {
+    min-width: 0;
+  }
+  [data-dash] .task-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+    min-width: 0;
+  }
+  [data-dash] .task-status .input {
+    flex: 1 1 8rem;
+    min-width: 0;
+  }
+  [data-dash] .task-form {
+    gap: var(--s-3);
+  }
+  [data-dash] .task-form textarea.input {
+    min-height: 64px;
+  }
+  [data-dash] .task-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-3);
+  }
+  [data-dash] .task-form-grid .wide {
+    grid-column: 1 / -1;
+  }
+
+  /* navigasi halaman (Pager.astro: Inbox, satu kolom papan Tugas) */
+  [data-dash] .pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+    margin-top: var(--s-4);
+  }
+  [data-dash] .pager-cur {
+    font-weight: var(--fw-semibold);
+    pointer-events: none;
+  }
+
+  /* papan kanban (/dashboard/tasks): .board > section.panel.tcol > .tcol-head + ul.tcol-body > TaskCard */
+  [data-dash] .board {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+    gap: var(--s-3);
+    align-items: start;
+  }
+  [data-dash] .tcol {
+    display: flex;
+    flex-direction: column;
+    background: var(--sunken);
+  }
+  /* kepala kolom menempel di bawah top bar saat papan panjang digulir */
+  [data-dash] .tcol-head {
+    position: sticky;
+    top: var(--top-h);
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-height: var(--col-head-h);
+    padding: 0 var(--s-3);
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--r-panel) var(--r-panel) 0 0;
+    background: var(--sunken);
+  }
+  /* lompat ke kolom (ponsel): tautan #col-* dengan hitungan */
+  [data-dash] .board-jump {
+    display: none;
+  }
+  [data-dash] .tcol-head .h3 {
+    flex: 1;
+    min-width: 0;
+  }
+  [data-dash] .tcol-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+    padding: var(--s-2);
+  }
+  [data-dash] .tcard {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    padding: var(--s-3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-panel);
+    background: var(--raised);
+    min-width: 0;
+  }
+  /* kartu dengan popover terbuka di atas kepala kolom yang menempel (z-index 1) */
+  [data-dash] .tcard:has(.pop[open]) {
+    z-index: 2;
+    border-color: var(--border-strong);
+  }
+  /* nama proyek = keterangan redup di atas judul (bukan setara judul) */
+  [data-dash] .tcard-proj {
+    align-self: flex-start;
+    max-width: 100%;
+    color: var(--text-2);
+    font-weight: var(--fw-medium);
+  }
+  [data-dash] .tcard-proj:hover {
+    color: var(--text);
+  }
+  [data-dash] .tcard-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+    margin-top: var(--s-1);
+  }
+  /* kaki kartu: penanggung jawab (kiri, elipsis) | status (select tanpa bingkai) | Ubah (ikon 28px) */
+  [data-dash] .task-actions.is-card {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin-top: var(--s-2);
+    padding-top: var(--s-2);
+    border-top: 1px solid var(--border);
+  }
+  [data-dash] .tcard-who {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  [data-dash] .is-card .task-status {
+    flex: none;
+    max-width: 60%;
+  }
+  [data-dash] .is-card .task-status .input {
+    flex: none;
+    width: auto;
+  }
+  [data-dash] .is-card > .task-status select.input {
+    border-color: transparent;
+    background-color: transparent;
+    padding-left: var(--s-2);
+  }
+  [data-dash] .is-card > .task-status select.input:is(:hover, :focus-visible) {
+    border-color: var(--control-border);
+  }
+  [data-dash] .is-card .task-edit > summary {
+    width: var(--hit-sm);
+    height: var(--hit-sm);
+  }
+
+  /* daftar berkelompok (detail proyek): .panel > section.tgroup > h3.tgroup-h + ul.rows > TaskRow.
+     Grup kosong hanya menampilkan kepalanya (hitungan 0). */
+  [data-dash] .tgroup + .tgroup {
+    border-top: 1px solid var(--border);
+  }
+  [data-dash] .tgroup-h {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-height: var(--row-h-head);
+    padding: 0 var(--s-4);
+    font-size: var(--fs-12);
+    line-height: var(--lh-12);
+    font-weight: var(--fw-semibold);
+    color: var(--text);
+    background: color-mix(in oklab, var(--hover) 60%, var(--panel));
+  }
+  [data-dash] .tgroup:has(.rows) .tgroup-h {
+    border-bottom: 1px solid var(--border);
+  }
+  /* grup kosong: kepala tenang (bukan strip berwarna) */
+  [data-dash] .tgroup:not(:has(.rows)) .tgroup-h {
+    background: transparent;
+    color: var(--text-3);
+    font-weight: var(--fw-medium);
+  }
+  [data-dash] .tgroup:first-child .tgroup-h {
+    border-radius: var(--r-panel) var(--r-panel) 0 0;
+  }
+  [data-dash] .tgroup:last-child:not(:has(.rows)) .tgroup-h {
+    border-radius: 0 0 var(--r-panel) var(--r-panel);
+  }
+  [data-dash] .tgroup:only-child:not(:has(.rows)) .tgroup-h {
+    border-radius: var(--r-panel);
+  }
+  [data-dash] .task {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto 10rem auto;
+    align-items: center;
+    gap: var(--s-2) var(--s-4);
+    padding: var(--s-2) var(--s-4);
+    min-height: var(--row-h);
+  }
+  [data-dash] .task-main {
+    min-width: 0;
+  }
+  [data-dash] .task-main .cap {
+    margin-top: 2px;
+  }
+  [data-dash] .task-meta {
+    display: grid;
+    grid-template-columns: 5.5rem 9rem 13.5rem;
+    align-items: center;
+    gap: var(--s-3);
+  }
+  [data-dash] .task-meta > * {
+    min-width: 0;
+  }
+  [data-dash] .task .due {
+    flex-wrap: nowrap;
+  }
+  /* baris: form status & tombol Edit jadi sel grid .task sendiri */
+  [data-dash] .task-actions.is-row {
+    display: contents;
+  }
+
+  /* --- sampul karya (portofolio: kartu daftar & pratinjau editor) ---
+     <div class="cover" style="background: coverBg(warna)"> + <img> (opsional) + .cover-tag */
+  [data-dash] .cover {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    aspect-ratio: 16 / 9;
+    padding: var(--s-4);
+    overflow: hidden;
+  }
+  [data-dash] .cover > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  /* label sampul tanpa gambar (sama dengan sampul website) */
+  [data-dash] .cover-tag {
+    max-width: 100%;
+    padding: 2px var(--s-2);
+    background: var(--cover-tag-bg);
+    color: var(--cover-tag-text);
+    font-size: var(--fs-16);
+    line-height: var(--lh-16);
+    font-weight: var(--fw-semibold);
+  }
+
+  /* --- responsif (urutan tetap: 1199 → 899 → 900+ → 640+ → 1024+ → 639) --- */
+  @media (max-width: 1199px) {
+    [data-dash] .cols {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    /* papan: kolom berdampingan yang digulir mendatar (kolom Review tidak lagi jatuh di bawah kolom 2700px) */
+    [data-dash] .board {
+      grid-template-columns: none;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(272px, 1fr);
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scroll-snap-type: x proximity;
+      padding-bottom: var(--s-2);
+    }
+    [data-dash] .tcol {
+      scroll-snap-align: start;
+    }
+    /* di dalam penggulung mendatar, sticky menempel ke papan (bukan viewport) dan menutupi kartu pertama */
+    [data-dash] .tcol-head {
+      position: static;
+    }
+    [data-dash] .task {
+      grid-template-columns: minmax(0, 1fr) 10rem auto;
+    }
+    [data-dash] .task-main {
+      grid-column: 1 / -1;
+    }
+    [data-dash] .task-meta {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+  }
+  @media (max-width: 899px) {
+    [data-dash] .filters-end {
+      margin-left: 0;
+      flex-basis: 100%;
+    }
+    [data-dash] .app {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    [data-dash] .app-side {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: min(300px, 86vw);
+      transform: translateX(-102%);
+      visibility: hidden;
+      transition:
+        transform var(--dur-drawer) var(--ease),
+        visibility 0s linear var(--dur-drawer);
+    }
+    [data-dash] .app-side.open {
+      transform: none;
+      visibility: visible;
+      transition: transform var(--dur-drawer) var(--ease);
+    }
+    /* tinggi tetap --top-h (56px): tombol menu 44px di tengah, tanpa padding atas/bawah */
+    [data-dash] .top {
+      padding: 0 var(--s-4);
+      gap: var(--s-2);
+    }
+    [data-dash] .crumbs li:not(:last-child) {
+      display: none;
+    }
+    /* halaman detail: "‹ Bagian" menggantikan breadcrumb */
+    [data-dash] .crumb-up {
+      display: inline-flex;
+    }
+    [data-dash] .crumb-up + .crumbs {
+      display: none;
+    }
+    [data-dash] .top:has(.crumb-up) .top-tools {
+      margin-left: auto;
+    }
+    [data-dash] .view {
+      padding: var(--s-4) var(--s-4) var(--s-12);
+    }
+    [data-dash] .seg > :is(button, a) {
+      min-height: var(--hit);
+    }
+    /* filter bersegmen = satu baris selebar layar (digulir bila tidak muat), segmen dibagi rata */
+    [data-dash] .filters > .seg {
+      flex: 1 1 100%;
+    }
+    [data-dash] .filters > .seg > :is(button, a) {
+      flex: 1 0 auto;
+      justify-content: center;
+    }
+    [data-dash] .proj-h {
+      display: none;
+    }
+    [data-dash] .proj-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--s-2) var(--s-3);
+      padding: var(--s-3) var(--s-4);
+    }
+    /* status + alasan di baris sendiri: nama proyek mendapat lebar penuh */
+    [data-dash] .proj-row > .proj-state {
+      grid-column: 1 / -1;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--s-1) var(--s-2);
+    }
+    [data-dash] .proj-row > .proj-prog {
+      grid-column: 1;
+    }
+    [data-dash] .proj-row > .proj-lead {
+      grid-column: 2;
+      justify-self: end;
+    }
+    [data-dash] .proj-row > .ic {
+      display: none;
+    }
+  }
+  @media (min-width: 900px) {
+    [data-dash] .backdrop,
+    [data-dash] .menu-btn,
+    [data-dash] .side-close {
+      display: none;
+    }
+    /* teks crumb pertama segaris dengan tepi H1 (padding crumb 6px) */
+    [data-dash] .crumbs ol {
+      margin-left: -6px;
+    }
+  }
+  @media (min-width: 640px) {
+    [data-dash] .form-grid.is-4 > .half {
+      grid-column: span 2 / span 2;
+    }
+  }
+  @media (min-width: 1024px) {
+    [data-dash] .form-grid.is-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  /* tabel → kartu juga di tablet (< 1024px) untuk tabel yang kolomnya tidak muat: <table class="tbl tbl-cards is-md">.
+     Aturan sama dengan blok 639px di bawah; halaman menentukan penempatan sel. */
+  @media (max-width: 1023px) {
+    [data-dash] .tbl-cards.is-md,
+    [data-dash] .tbl-cards.is-md tbody,
+    [data-dash] .tbl-cards.is-md td {
+      display: block;
+      width: auto;
+      min-width: 0;
+    }
+    [data-dash] .tbl-cards.is-md thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    [data-dash] .tbl-cards.is-md tbody tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--s-2) var(--s-3);
+      padding: var(--s-3) var(--s-4);
+      border-bottom: 1px solid var(--border);
+    }
+    [data-dash] .tbl-cards.is-md tbody tr:last-child {
+      border-bottom: 0;
+    }
+    [data-dash] .tbl-cards.is-md td,
+    [data-dash] .tbl-cards.is-md td:first-child,
+    [data-dash] .tbl-cards.is-md td:last-child {
+      height: auto;
+      padding: 0;
+      border: 0;
+    }
+  }
+  @media (max-width: 639px) {
+    [data-dash] .h1 {
+      font-size: var(--fs-20);
+      line-height: var(--lh-20);
+    }
+    [data-dash] .answer {
+      font-size: var(--fs-14);
+      line-height: var(--lh-14);
+    }
+    [data-dash] .form-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    [data-dash] .panel-head,
+    [data-dash] .panel-body,
+    [data-dash] .panel-foot {
+      padding-left: var(--s-4);
+      padding-right: var(--s-4);
+    }
+    [data-dash] .stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    [data-dash] .stat {
+      padding: var(--s-3);
+    }
+    [data-dash] .stat-value {
+      font-size: var(--fs-20);
+      line-height: var(--lh-20);
+    }
+    /* tabel → kartu: <table class="tbl tbl-cards">: thead disembunyikan, tiap <tr> jadi grid
+       2 kolom berpadding. Halaman menentukan penempatan sel (grid-area / grid-column). */
+    [data-dash] .tbl-cards {
+      min-width: 0;
+    }
+    [data-dash] .tbl-cards,
+    [data-dash] .tbl-cards tbody,
+    [data-dash] .tbl-cards td {
+      display: block;
+      width: auto;
+    }
+    [data-dash] .tbl-cards tbody tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--s-2) var(--s-3);
+      padding: var(--s-3) var(--s-4);
+      border-bottom: 1px solid var(--border);
+    }
+    [data-dash] .tbl-cards tbody tr:last-child {
+      border-bottom: 0;
+    }
+    [data-dash] .tbl-cards td,
+    [data-dash] .tbl-cards td:first-child,
+    [data-dash] .tbl-cards td:last-child {
+      height: auto;
+      padding: 0;
+      border: 0;
+    }
+    /* label tombol di samping ikon & kepala tabel-kartu: tersembunyi, tetap dibaca pembaca layar (= .vh) */
+    [data-dash] .hide-sm,
+    [data-dash] .tbl-cards thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    /* papan di ponsel: kolom bertumpuk (kepala menempel), kolom kosong hanya kepala "0", lompat ke kolom di atas */
+    [data-dash] .board {
+      grid-template-columns: minmax(0, 1fr);
+      grid-auto-flow: row;
+      grid-auto-columns: auto;
+      overflow: visible;
+      scroll-snap-type: none;
+      padding-bottom: 0;
+    }
+    [data-dash] .tcol-head {
+      position: sticky;
+    }
+    [data-dash] .tcol:has(> .empty) > .empty {
+      display: none;
+    }
+    [data-dash] .tcol:has(> .empty) > .tcol-head {
+      position: static;
+      border-bottom: 0;
+      border-radius: inherit;
+      color: var(--text-3);
+    }
+    [data-dash] .task {
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding: var(--s-3) var(--s-4);
+    }
+    /* prioritas | penanggung jawab (nama utuh), deadline di baris sendiri */
+    [data-dash] .task-meta {
+      grid-column: 1 / -1;
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+    [data-dash] .task-meta .task-due {
+      grid-column: 1 / -1;
+    }
+    [data-dash] .is-row .task-status {
+      flex: 1;
+    }
+    /* popover → lembar bawah selebar layar, dengan latar redup (JS: klik latar = tutup) dan kepala judul + tutup */
+    [data-dash] .pop-panel,
+    [data-dash] .pop.is-up > .pop-panel,
+    [data-dash] .pop.is-left > .pop-panel {
+      position: fixed;
+      inset: auto 0 0 0;
+      width: auto;
+      max-height: calc(100dvh - var(--top-h) - var(--s-6));
+      border-bottom: 0;
+      border-radius: var(--r-panel) var(--r-panel) 0 0;
+      padding-bottom: max(var(--s-4), env(safe-area-inset-bottom));
+    }
+    [data-dash].js .pop[open]::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: calc(var(--z-pop) - 1);
+      background: var(--backdrop);
+    }
+    /* html.pop-open diset forms.ts selama popover terbuka (bukan :has() di akar) */
+    [data-dash].pop-open {
+      overflow: hidden;
+    }
+    /* lembar & latarnya harus di atas top bar: kartu tidak membuat konteks tumpuk sendiri */
+    [data-dash] .tcard:has(.pop[open]) {
+      z-index: auto;
+    }
+    [data-dash].js .pop-head {
+      display: flex;
+    }
+  }
+  @media (forced-colors: active) {
+    [data-dash]
+      :is(
+        .btn,
+        .btn-primary,
+        .btn-danger,
+        .btn-icon,
+        .seg,
+        .input,
+        .panel,
+        .list,
+        .stats,
+        .tbl-wrap,
+        .proj,
+        .notice,
+        .tcard,
+        .pop-panel
+      ) {
+      border: 1px solid CanvasText;
+    }
+    [data-dash] .nav-item[aria-current="page"],
+    [data-dash] .seg > [aria-pressed="true"],
+    [data-dash] .seg > [aria-current],
+    [data-dash] .theme-sw button[aria-checked="true"],
+    [data-dash] [aria-pressed="true"],
+    [data-dash] .pop[open] > summary,
+    [data-dash] .tgl-link.is-on,
+    [data-dash] [data-row]:target {
+      outline: 2px solid Highlight;
+    }
+    [data-dash] .nav-item[aria-current="page"]::before {
+      background: Highlight;
+    }
+    /* progres: lintasan bergaris, isi & penanda tetap terlihat */
+    [data-dash] .progress-track {
+      border: 1px solid CanvasText;
+      background: Canvas;
+    }
+    [data-dash] .progress-fill {
+      background: Highlight;
+    }
+    [data-dash] .progress-mark {
+      background: CanvasText;
+      forced-color-adjust: none;
+    }
+    /* pemisah KPI & cincin avatar memakai box-shadow (dibuang mode ini) → garis */
+    [data-dash] .stat {
+      border-left: 1px solid CanvasText;
+      border-top: 1px solid CanvasText;
+    }
+    [data-dash] .avatar {
+      border: 1px solid CanvasText;
+    }
+    [data-dash] .tgl-link.is-on .tgl-box {
+      background: Highlight;
+      color: HighlightText;
+      forced-color-adjust: none;
+    }
+    /* lewat deadline: juga bergaris bawah (warna diganti sistem) */
+    [data-dash] .due.is-late .due-rel {
+      text-decoration: underline;
+    }
+  }
+}
+
+/* ---------- 4. UTILITAS ---------- */
+@layer utilities {
+  [data-dash] .vh {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  [data-dash] .small {
+    font-size: var(--fs-13);
+    line-height: var(--lh-13);
+  }
+  [data-dash] .t-2 {
+    color: var(--text-2);
+  }
+  [data-dash] .t-3 {
+    color: var(--text-3);
+  }
+  [data-dash] .v-crit {
+    color: var(--critical);
+  }
+  [data-dash] .v-warn {
+    color: var(--warning);
+  }
+  /* ikon amber = grafis: warna isi (teks tetap --warning) */
+  [data-dash] .ic.v-warn {
+    color: var(--warning-fill);
+  }
+  /* hanya di ponsel (< 640px), pasangan .hide-sm; tidak dibaca dua kali: beri aria-hidden */
+  @media (min-width: 640px) {
+    [data-dash] .only-sm {
+      display: none;
+    }
+  }
+  /* angka tabular: body sudah tabular-nums; kelas ini penanda untuk kontrol & sel angka */
+  [data-dash] .num {
+    font-variant-numeric: tabular-nums;
+  }
+  /* satu baris + elipsis (juga untuk nama di sidebar, label KPI, nama proyek) */
+  [data-dash] .ell,
+  [data-dash] .me-name {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* kode / ID monospace (slug, warna, Discord ID). .mono publik (site.css) = label uppercase.
+     Pada .input ukuran huruf tetap milik kontrol (14px / 13px untuk .input-sm). */
+  [data-dash] .code {
+    font-family: var(--font-mono);
+  }
+  [data-dash] .code:not(.input) {
+    font-size: 0.92em;
+  }
+  [data-dash] .code::placeholder {
+    font-family: var(--font-sans);
+  }
+  /* mono di input terlihat lebih besar/berat dari sans pada ukuran sama */
+  [data-dash] .code.input {
+    font-size: var(--fs-13);
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ---------- 5. Kabel fungsional (audit 2, part A). Hanya token; tampilan akhir dipoles di part B. ---------- */
+@layer components {
+  /* drawer tanpa JS (< 900px): tombol menu = tautan #dash-side, sidebar tampil lewat :target */
+  @media (max-width: 899px) {
+    [data-dash] .app-side:target {
+      transform: none;
+      visibility: visible;
+      transition: none;
+    }
+  }
+  /* akun di sidebar = tautan ke "Ganti password saya" */
+  [data-dash] a.me {
+    color: inherit;
+    text-decoration: none;
+    border-radius: var(--r-control);
+    padding: var(--s-1);
+    transition: var(--tr-colors);
+  }
+  [data-dash] a.me:hover {
+    background: var(--hover);
+  }
+  /* tutup flash: kotak centang tersembunyi di dalam label (tanpa JS disembunyikan dengan :has) */
+  [data-dash] .flash-x {
+    cursor: pointer;
+  }
+  [data-dash] .flash-x:has(input:focus-visible) {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  [data-dash] .flash:has(.flash-x input:checked) {
+    display: none;
+  }
+  /* popover ditutup (Esc / klik di luar) dengan perubahan yang belum disimpan */
+  [data-dash] details.pop[data-unsaved] > summary {
+    position: relative;
+  }
+  [data-dash] details.pop[data-unsaved] > summary::after {
+    content: "";
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: var(--dot);
+    height: var(--dot);
+    border-radius: var(--r-full);
+    background: var(--warning-fill);
+    box-shadow: 0 0 0 2px var(--raised);
+    forced-color-adjust: none;
+  }
+  /* isian dipulihkan setelah login ulang (notice tone-info yang disisipkan forms.ts di atas form) */
+  [data-dash] .draft-note {
+    margin-bottom: var(--s-3);
+  }
+  [data-dash] .pad > .draft-note:first-child,
+  [data-dash] .panel-body > .draft-note:first-child {
+    margin-bottom: 0;
+  }
+  /* teks bebas panjang tanpa spasi tidak boleh melebarkan halaman */
+  [data-dash]
+    :is(
+      .h1,
+      .h2,
+      .answer,
+      .desc,
+      .task-title,
+      .tcard p,
+      .tcard .cap,
+      .task-main .cap,
+      .trow-title,
+      .trow .meta,
+      .proj-name,
+      .inq-msg,
+      .notice > span,
+      .empty > p,
+      .pf-status .cap
+    ) {
+    overflow-wrap: anywhere;
+  }
+
+  /* drawer tanpa JS: latar redup = tautan tutup (#main) di belakang sidebar */
+  [data-dash] .side-scrim {
+    display: none;
+  }
+  @media (max-width: 899px) {
+    [data-dash] .app-side:target > .side-scrim {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: var(--backdrop);
+    }
+  }
+
+  /* baris hasil di bawah toolbar: "N proyek · urutan …  Hapus filter" */
+  [data-dash] .list-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-1) var(--s-3);
+  }
+
+  /* lompat ke kolom papan (ponsel) */
+  @media (max-width: 639px) {
+    [data-dash] .board-jump {
+      display: flex;
+    }
+    [data-dash] .board-jump > a {
+      flex: 1 0 auto;
+      justify-content: center;
+    }
+  }
+
+  /* form tambah tugas (detail proyek & /tasks, .has-project = ada pilihan Proyek): satu pola grid.
+     Ponsel 1 kolom → 2 kolom (judul selebar baris) → satu baris (detail ≥1024px, /tasks ≥1200px).
+     Tombol sejajar dengan kontrol baris pertama walau judul (textarea) bertambah tinggi. */
+  [data-dash] .add-task {
+    display: grid;
+    gap: var(--s-3);
+    align-items: start;
+  }
+  [data-dash] .add-task-submit {
+    display: flex;
+  }
+  /* judul tugas baru: textarea satu baris yang tumbuh saat daftar ditempel */
+  [data-dash] .add-task textarea.input {
+    resize: vertical;
+    min-height: var(--hit);
+    max-height: 12rem;
+    field-sizing: content;
+  }
+  @media (min-width: 640px) {
+    [data-dash] .add-task {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    [data-dash] .add-task > .at-title {
+      grid-column: 1 / -1;
+    }
+    [data-dash] .add-task-submit {
+      margin-top: calc(var(--lh-13) + var(--gap-inline));
+    }
+  }
+  @media (min-width: 1024px) {
+    [data-dash] .add-task {
+      grid-template-columns: minmax(0, 1fr) 12rem 8rem 10rem auto;
+    }
+    [data-dash] .add-task > .at-title {
+      grid-column: auto;
+    }
+    [data-dash] .add-task.has-project {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    [data-dash] .add-task.has-project > .at-title {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (min-width: 1200px) {
+    [data-dash] .add-task.has-project {
+      grid-template-columns: minmax(0, 1fr) 12rem 12rem 8rem 10rem auto;
+    }
+    [data-dash] .add-task.has-project > .at-title {
+      grid-column: auto;
+    }
+  }
+}
+@layer utilities {
+  html[data-dash]:not(.js) .js-only,
+  html[data-dash].js .nojs-only {
+    display: none !important;
+  }
+}

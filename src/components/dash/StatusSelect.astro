@@ -1,0 +1,45 @@
+---
+// Form ubah status: <select data-autosubmit> + tombol Simpan.
+//   Mouse / sentuh: memilih opsi langsung mengirim form (forms.ts).
+//   Keyboard: panah hanya mengganti pilihan; kirim dengan Enter atau tombol Simpan yang muncul saat
+//   nilainya berubah. Tanpa JS: tombol Simpan selalu tampil.
+// Label: dengan id → <label for> (labelClass, default "vh"), tanpa id → aria-label.
+// saveSr = konteks tombol Simpan untuk pembaca layar, mis. " status Desain logo".
+import Options from "./Options.astro";
+import { autoSubmit } from "./ui";
+
+interface Props {
+  action: string;
+  back: string;
+  options: Record<string, { label: string }>;
+  selected: string;
+  label: string;
+  /** tambahan label khusus pembaca layar (label terlihat "Status" + " pesan dari Budi") */
+  labelSr?: string;
+  saveSr?: string;
+  id?: string;
+  labelClass?: string;
+  class?: string;
+  selectClass?: string;
+  [attr: string]: unknown;
+}
+const { action, back, options, selected, label, labelSr, saveSr, id, labelClass = "vh", class: cls, selectClass, ...attrs } = Astro.props;
+---
+
+<form method="post" action={action} class:list={["status-form", cls]} data-guard {...attrs}>
+  <input type="hidden" name="_back" value={back} />
+  {
+    id && (
+      <label for={id} class={labelClass}>
+        {label}
+        {labelSr && <span class="vh">{labelSr}</span>}
+      </label>
+    )
+  }
+  <select id={id} name="status" aria-label={id ? undefined : `${label}${labelSr ?? ""}`} class:list={["input", selectClass]} {...autoSubmit}>
+    <Options from={options} selected={selected} />
+  </select>
+  <button type="submit" class="btn btn-sm status-save" data-status-save>
+    Simpan{saveSr && <span class="vh">{saveSr}</span>}
+  </button>
+</form>

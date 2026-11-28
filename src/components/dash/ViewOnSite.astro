@@ -1,0 +1,17 @@
+---
+// Tombol "Lihat di website" (tab baru) untuk slot actions di top bar halaman portofolio.
+import Icon from "./Icon.astro";
+import { externalAttrs } from "./ui";
+
+interface Props {
+  href: string;
+  class?: string;
+}
+const { href, class: cls } = Astro.props;
+---
+
+<a href={href} class:list={["btn btn-sm", cls]} {...externalAttrs}>
+  <Icon name="external" class="ic-sm" />
+  <span class="hide-sm">Lihat di website</span>
+  <span class="vh"> (tab baru)</span>
+</a>

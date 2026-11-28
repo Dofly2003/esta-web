@@ -3,125 +3,364 @@ import Dash from "../../layouts/Dash.astro";
 import PageHeader from "../../components/dash/PageHeader.astro";
 import Badge from "../../components/dash/Badge.astro";
 import Progress from "../../components/dash/Progress.astro";
+import Avatar from "../../components/dash/Avatar.astro";
+import Icon from "../../components/dash/Icon.astro";
+import SectionHead from "../../components/dash/SectionHead.astro";
+import EmptyState from "../../components/dash/EmptyState.astro";
+import Due from "../../components/dash/Due.astro";
+import SegFilter from "../../components/dash/SegFilter.astro";
+import InquiryList from "../../components/dash/InquiryList.astro";
 import { api } from "../../lib/api";
-import { PRIORITY, PROJECT_STATUS, PROJECT_TYPES } from "@shared/constants";
-import { fmtDate, isOverdue, progress } from "@shared/format";
-import type { Inquiry, Project, Task } from "@shared/types";
+import { isAdmin, PRIORITY, PROJECT_STATUS, REPLY_WITHIN_HOURS } from "@shared/constants";
+import { agoText, fmtDate, fmtLongDate, hoursSince, isLate } from "@shared/format";
+import type { ActiveProject, DashboardSummary } from "@shared/types";
 
 const user = Astro.locals.user!;
-const d = await api<{
-  active: (Project & { tasks: Task[] })[];
-  openTasks: number;
-  overdue: number;
-  newInquiries: number;
-  myTasks: (Task & { projectName: string })[];
-  inquiries: Inquiry[];
-}>(Astro, "/api/dashboard");
+const admin = isAdmin(user);
+const d = await api<DashboardSummary>(Astro, "/api/dashboard");
 
-const stats = [
-  { label: "Proyek aktif", value: d.active.length, href: "/dashboard/projects" },
-  { label: "Tugas terbuka", value: d.openTasks, href: "/dashboard/tasks?filter=all" },
-  { label: "Tugas lewat deadline", value: d.overdue, href: "/dashboard/tasks?filter=all", warn: d.overdue > 0 },
-  { label: "Inquiry baru", value: d.newInquiries, href: "/dashboard/inbox" },
+const todayLabel = fmtLongDate();
+
+// cakupan tile deadline: anggota melihat tugasnya sendiri dulu, admin melihat tim (?cakupan= menimpa)
+const rawScope = Astro.url.searchParams.get("cakupan");
+const scope: "saya" | "tim" = rawScope === "saya" || rawScope === "tim" ? rawScope : admin ? "tim" : "saya";
+const mineScope = scope === "saya";
+const scopeItems = [
+  { href: "/dashboard?cakupan=saya", label: "Tugas saya", current: mineScope },
+  { href: "/dashboard?cakupan=tim", label: "Tim", current: !mineScope },
 ];
+
+// janji website: inquiry dibalas maks. 1×24 jam
+const inqLate = d.oldestNewInquiryAt != null && hoursSince(d.oldestNewInquiryAt) >= REPLY_WITHIN_HOURS;
+const waitDays = (iso: string) => Math.max(1, Math.floor(hoursSince(iso) / 24));
+const reviewDays = d.oldestReviewAt ? Math.floor(hoursSince(d.oldestReviewAt) / 24) : null;
+
+// 4 tile yang bisa ditindaklanjuti; tiap tile membuka daftar yang persis berisi angkanya
+type Tile = { label: string; value: number; href: string; meta: string; tone: "crit" | "warn" | "ok" | "neutral"; valueCrit?: boolean };
+const overdue = mineScope ? d.myOverdue : d.overdue;
+const week = mineScope ? d.myDueThisWeek : d.dueThisWeek;
+const today = mineScope ? d.myDueToday : d.dueToday;
+const tiles: Tile[] = [
+  {
+    label: "Lewat deadline",
+    value: overdue,
+    href: mineScope ? "/dashboard/tasks?due=overdue" : "/dashboard/tasks?filter=all&due=overdue",
+    meta: mineScope
+      ? overdue > 0
+        ? `Perlu ditindaklanjuti · tim: ${d.overdue}`
+        : `Tugas Anda sesuai jadwal · tim: ${d.overdue}`
+      : overdue > 0
+        ? `Perlu ditindaklanjuti · ${d.myOverdue} milik Anda`
+        : "Semua sesuai jadwal",
+    tone: overdue > 0 ? "crit" : "ok",
+    valueCrit: overdue > 0,
+  },
+  {
+    label: "Deadline 7 hari ke depan",
+    value: week,
+    href: mineScope ? "/dashboard/tasks?due=week" : "/dashboard/tasks?filter=all&due=week",
+    meta: today > 0 ? `${today} deadline hari ini` : "Tidak ada yang hari ini",
+    tone: today > 0 ? "warn" : "neutral",
+  },
+  {
+    label: "Menunggu review",
+    value: d.reviewTasks,
+    href: "/dashboard/tasks?filter=all&status=REVIEW",
+    meta:
+      reviewDays == null
+        ? "Tidak ada yang menunggu"
+        : reviewDays >= 1
+          ? `Tertua ${reviewDays} hari di Review`
+          : "Tertua masuk Review hari ini",
+    tone: reviewDays == null ? "ok" : reviewDays >= 2 ? "warn" : "neutral",
+  },
+  {
+    label: "Inquiry baru",
+    value: d.newInquiries,
+    href: "/dashboard/inbox?status=NEW",
+    meta:
+      d.oldestNewInquiryAt == null
+        ? "Semua inquiry sudah ditanggapi"
+        : inqLate
+          ? `Lewat 1×24 jam · menunggu ${waitDays(d.oldestNewInquiryAt)} hari`
+          : `Tertua ${agoText(d.oldestNewInquiryAt)}`,
+    tone: d.oldestNewInquiryAt == null ? "ok" : inqLate ? "warn" : "neutral",
+  },
+];
+
+// alasan "Perlu perhatian" (sama dengan aturan atRisk di server/api.ts)
+const dueText = (n: number) => (n === 0 ? "hari ini" : `${n} hari lagi`);
+// kolom seimbang (≥1200px): admin dengan banyak proyek berjalan → "Inquiry baru" di bawah daftar proyek
+const inqUnderProjects = admin && d.active.length > 3;
+const reason = (p: ActiveProject) => {
+  if (p.late) return `Lewat deadline${p.daysLeft != null && p.daysLeft < 0 ? ` ${-p.daysLeft} hari` : ""}`;
+  if (!p.atRisk) return "Sesuai jadwal";
+  const pct = p.totalTasks ? Math.round((p.doneTasks / p.totalTasks) * 100) : null;
+  const time = p.elapsed != null ? Math.round(p.elapsed * 100) : null;
+  if (pct != null && time != null && pct < time - 15) return `Tertinggal: ${pct}% selesai, waktu ${time}%`;
+  if (p.daysLeft != null) {
+    if (p.totalTasks === 0) return `Deadline ${dueText(p.daysLeft)}, belum ada tugas`;
+    return `Deadline ${dueText(p.daysLeft)}, ${p.totalTasks - p.doneTasks} tugas belum selesai`;
+  }
+  return "Perlu perhatian";
+};
 ---
 
-<Dash title="Dashboard">
-  <PageHeader title={`Halo, ${user.name.split(" ")[0]} 👋`} subtitle="Ringkasan pekerjaan tim hari ini.">
-    <a href="/dashboard/projects?new=1" class="btn-primary">+ Proyek baru</a>
-  </PageHeader>
+<Dash title="Ringkasan">
+  {
+    admin ? (
+      <a slot="actions" href="/dashboard/projects?new=1#proyek-baru" class="btn-primary btn-sm">
+        <Icon name="plus" class="ic-sm" />
+        Proyek baru
+      </a>
+    ) : (
+      <a slot="actions" href="/dashboard/tasks" class="btn-primary btn-sm">
+        <Icon name="check" class="ic-sm" />
+        Tugas saya
+      </a>
+    )
+  }
 
-  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-    {
-      stats.map((s) => (
-        <a href={s.href} class="card p-5 transition hover:border-accent/50">
-          <p class="text-xs text-zinc-500">{s.label}</p>
-          <p class:list={["mt-2 text-3xl font-extrabold", s.warn && "text-rose-600"]}>{s.value}</p>
-        </a>
-      ))
-    }
-  </div>
+  <PageHeader title={`Halo, ${user.name.split(" ")[0]}`} subtitle={`${todayLabel} (WIB) · ringkasan pekerjaan tim.`} />
 
-  <div class="mt-8 grid gap-6 xl:grid-cols-3">
-    <section class="card p-5 xl:col-span-2">
-      <div class="mb-4 flex items-center justify-between">
-        <h2 class="font-bold">Proyek berjalan</h2>
-        <a href="/dashboard/projects" class="text-xs text-accent">Semua →</a>
+  <div class="stack">
+    <div class="stat-group">
+      <div class="filters">
+        <SegFilter label="Cakupan tile deadline" items={scopeItems} />
       </div>
+      <section aria-label={`Yang perlu ditindaklanjuti (deadline: ${mineScope ? "tugas saya" : "seluruh tim"})`} class="stats">
+        {
+          tiles.map((s) => (
+            <a href={s.href} class="stat">
+              <span class="stat-label">{s.label}</span>
+              <span class:list={["stat-value num", s.valueCrit && "v-crit"]}>{s.value}</span>
+              <span class="stat-meta">
+                {s.tone === "crit" || s.tone === "warn" ? (
+                  <Icon name="alert" class:list={["ic-sm", s.tone === "crit" ? "v-crit" : "v-warn"]} />
+                ) : (
+                  <span class:list={["dot", `tone-${s.tone}`]} aria-hidden="true" />
+                )}
+                <span>{s.meta}</span>
+              </span>
+            </a>
+          ))
+        }
+      </section>
       {
-        d.active.length === 0 ? (
-          <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">Tidak ada proyek aktif.</p>
-        ) : (
-          <ul class="divide-y divide-zinc-100">
-            {d.active.map((p) => (
-              <li>
-                <a href={`/dashboard/projects/${p.id}`} class="grid gap-2 py-3 sm:grid-cols-[1fr_120px_160px] sm:items-center sm:gap-4">
-                  <div class="min-w-0">
-                    <p class="truncate font-semibold">{p.name}</p>
-                    <p class="text-xs text-zinc-500">
-                      {p.client} · {PROJECT_TYPES[p.type]} · Deadline{" "}
-                      <span class:list={[isOverdue(p.dueDate) && "font-semibold text-rose-600"]}>{fmtDate(p.dueDate)}</span>
-                    </p>
-                  </div>
-                  <Badge opt={PROJECT_STATUS[p.status]} />
-                  <Progress value={progress(p.tasks)} />
-                </a>
-              </li>
-            ))}
-          </ul>
+        d.unassigned > 0 && (
+          <p class="cap overview-line">
+            <Icon name="alert" class="ic-sm v-warn" />
+            <span>
+              <a href="/dashboard/tasks?filter=all&assignee=none" class="link">
+                {d.unassigned} tugas tanpa penanggung jawab
+              </a>. Tentukan siapa yang mengerjakan.
+            </span>
+          </p>
         )
       }
-    </section>
+    </div>
 
-    <div class="space-y-6">
-      <section class="card p-5">
-        <div class="mb-4 flex items-center justify-between">
-          <h2 class="font-bold">Tugas saya</h2>
-          <a href="/dashboard/tasks" class="text-xs text-accent">Semua →</a>
-        </div>
-        {
-          d.myTasks.length === 0 ? (
-            <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">Tidak ada tugas untuk Anda. 🎉</p>
+    <div class:list={["cols", admin ? "cols-admin" : "cols-member"]}>
+      {
+        /* anggota: pekerjaan sendiri dulu (urutan DOM = urutan tampil, kolom kiri);
+           admin: proyek dulu, di layar sempit "Tugas saya" naik ke atas lewat CSS order */
+        (admin ? (["proj", "side"] as const) : (["side", "proj"] as const)).map((part) =>
+          part === "proj" ? (
+            <section class="sec" aria-labelledby="h-proj">
+              <SectionHead
+                id="h-proj"
+                title="Proyek berjalan"
+                count={d.activeProjects}
+                countSr="proyek"
+                href="/dashboard/projects?status=ACTIVE"
+                linkLabel="Semua proyek berjalan"
+              >
+                {d.projectsAtRisk > 0 && (
+                  <p class="cap">{d.projectsAtRisk} perlu perhatian (lewat deadline atau tertinggal), diurutkan paling atas.</p>
+                )}
+              </SectionHead>
+              {d.active.length === 0 ? (
+                <EmptyState title="Tidak ada proyek berjalan.">
+                  {admin && (
+                    <a slot="actions" href="/dashboard/projects?new=1#proyek-baru" class="btn btn-sm">
+                      <Icon name="plus" class="ic-sm" />
+                      Proyek baru
+                    </a>
+                  )}
+                </EmptyState>
+              ) : (
+                <div class="proj">
+                  <div class="proj-h" aria-hidden="true">
+                    <span>Proyek</span>
+                    <span>Status</span>
+                    <span class="r">Progres · waktu</span>
+                    <span title="Penanggung jawab">PJ</span>
+                    <span />
+                  </div>
+                  <ul>
+                    {d.active.map((p) => (
+                      <li>
+                        <a href={`/dashboard/projects/${p.id}`} class="proj-row">
+                          <span class="proj-name">
+                            <b>{p.name}</b>
+                            <span class="proj-sub">
+                              <span class="ell">{p.client}</span>
+                              <span class="vh">, deadline </span>
+                              <Due date={p.dueDate} late={p.late} class="num" />
+                            </span>
+                          </span>
+                          <span class="proj-state">
+                            <Badge opt={PROJECT_STATUS[p.status]} />
+                            <span class:list={["cap", p.late ? "v-crit" : p.atRisk && "v-warn"]}>
+                              {p.atRisk && <span class="vh">Perlu perhatian: </span>}
+                              {reason(p)}
+                            </span>
+                          </span>
+                          <span class="proj-prog">
+                            <Progress done={p.doneTasks} total={p.totalTasks} name={p.name} elapsed={p.elapsed} late={p.late} behind={p.atRisk} />
+                            {p.totalTasks > 0 && (
+                              <span class="sub num">
+                                {p.doneTasks}/{p.totalTasks} tugas
+                                {p.elapsed != null && <> · waktu {Math.round(p.elapsed * 100)}%</>}
+                              </span>
+                            )}
+                          </span>
+                          <span class="proj-lead">
+                            <span class="vh">Penanggung jawab: {p.lead?.name ?? "belum ada"}</span>
+                            <Avatar name={p.lead?.name} decorative title={p.lead?.name ?? "Tanpa penanggung jawab"} />
+                          </span>
+                          <Icon name="chev-r" />
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {(d.doneWithoutPortfolio > 0 || d.onHoldTasks > 0) && (
+                <p class="cap overview-foot">
+                  {d.doneWithoutPortfolio > 0 && (
+                    <a href="/dashboard/projects?status=DONE&pf=belum" class="link">
+                      {d.doneWithoutPortfolio} proyek selesai belum dijadikan portofolio
+                    </a>
+                  )}
+                  {d.onHoldTasks > 0 && (
+                    <a href="/dashboard/projects?status=ON_HOLD" class="link">
+                      {d.onHoldTasks} tugas di proyek ditunda (tidak dihitung di atas)
+                    </a>
+                  )}
+                </p>
+              )}
+              {inqUnderProjects && <InquiryList inquiries={d.inquiries} total={d.newInquiries} />}
+            </section>
           ) : (
-            <ul class="space-y-3">
-              {d.myTasks.map((t) => (
-                <li>
-                  <a href={`/dashboard/projects/${t.projectId}`} class="block rounded-lg hover:bg-zinc-50">
-                    <div class="flex items-start justify-between gap-2">
-                      <p class="text-sm font-medium">{t.title}</p>
-                      <Badge opt={PRIORITY[t.priority]} />
-                    </div>
-                    <p class="text-xs text-zinc-500">
-                      {t.projectName} · <span class:list={[isOverdue(t.dueDate) && "font-semibold text-rose-600"]}>{fmtDate(t.dueDate)}</span>
-                    </p>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )
-        }
-      </section>
+            <div class="right-col">
+              <section class="sec" aria-labelledby="h-task">
+                <SectionHead
+                  id="h-task"
+                  title="Tugas saya"
+                  count={d.myOpenTasks}
+                  countSr="tugas terbuka"
+                  href="/dashboard/tasks"
+                  linkLabel={d.myOpenTasks > d.myTasks.length ? `Lihat semua (${d.myOpenTasks})` : "Semua tugas"}
+                />
+                <div class="panel">
+                  {d.myTasks.length === 0 ? (
+                    <EmptyState compact title="Tidak ada tugas terbuka untuk Anda.">
+                      {d.unassigned > 0 && (
+                        <a slot="actions" href="/dashboard/tasks?filter=all&assignee=none" class="btn btn-sm">
+                          Ambil tugas tanpa PJ<span class="vh"> ({d.unassigned} tugas)</span>
+                        </a>
+                      )}
+                    </EmptyState>
+                  ) : (
+                    <ul class="rows">
+                      {d.myTasks.map((t) => (
+                        <li>
+                          <a href={`/dashboard/projects/${t.projectId}#task-${t.id}`} class="trow">
+                            <span class="trow-title">{t.title}</span>
+                            <Badge opt={PRIORITY[t.priority]} />
+                            <span class="meta">
+                              <span class="ell">{t.projectName}</span>
+                              {t.dueDate && <Due date={t.dueDate} late={isLate(t)} class="num" />}
+                            </span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </section>
 
-      <section class="card p-5">
-        <div class="mb-4 flex items-center justify-between">
-          <h2 class="font-bold">Inquiry baru</h2>
-          <a href="/dashboard/inbox" class="text-xs text-accent">Inbox →</a>
-        </div>
-        {
-          d.inquiries.length === 0 ? (
-            <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">Belum ada pesan baru.</p>
-          ) : (
-            <ul class="space-y-3">
-              {d.inquiries.map((q) => (
-                <li class="text-sm">
-                  <p class="font-medium">{q.name} {q.company && <span class="text-zinc-500">· {q.company}</span>}</p>
-                  <p class="line-clamp-1 text-xs text-zinc-500">{q.message}</p>
-                </li>
-              ))}
-            </ul>
-          )
-        }
-      </section>
+              {d.reviewTasks > 0 && (
+                <section class="sec" aria-labelledby="h-review">
+                  <SectionHead
+                    id="h-review"
+                    title="Menunggu review"
+                    count={d.reviewTasks}
+                    countSr="tugas"
+                    href="/dashboard/tasks?filter=all&status=REVIEW"
+                    linkLabel={d.reviewTasks > d.review.length ? `Lihat semua (${d.reviewTasks})` : "Buka daftar"}
+                  >
+                    <p class="cap">Paling lama menunggu di atas.</p>
+                  </SectionHead>
+                  <div class="panel">
+                    <ul class="rows">
+                      {d.review.map((t) => (
+                        <li>
+                          <a href={`/dashboard/projects/${t.projectId}#task-${t.id}`} class="trow">
+                            <span class="trow-title">{t.title}</span>
+                            <span class="cap num" title={fmtDate(t.updatedAt)}>
+                              Review {agoText(t.updatedAt)}
+                            </span>
+                            <span class="meta">
+                              <span class="ell">{t.projectName}</span>
+                            </span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </section>
+              )}
+
+              {!inqUnderProjects && <InquiryList inquiries={d.inquiries} total={d.newInquiries} />}
+            </div>
+          ),
+        )
+      }
     </div>
   </div>
 </Dash>
+
+<style>
+  .overview-foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-1) var(--s-4);
+  }
+  /* ikon di baris pertama, kalimat membungkus di sampingnya (tanpa pemisah yatim) */
+  .overview-line {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--gap-inline);
+  }
+  .overview-line :global(.ic) {
+    margin-top: 1px;
+  }
+  /* anggota: kolom tugas (kiri, lebih sempit) sebelum proyek */
+  @media (min-width: 1200px) {
+    .cols-member {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+    }
+  }
+  /* admin saat kolom ditumpuk (< 1200px): "Tugas saya" sebelum daftar proyek */
+  @media (max-width: 1199px) {
+    .cols-admin > .right-col {
+      order: -1;
+    }
+  }
+  .proj-lead {
+    display: flex;
+    justify-content: center;
+  }
+</style>

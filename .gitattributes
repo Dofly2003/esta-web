@@ -1,0 +1,2 @@
+# Simpan semua file teks dengan LF agar vp fmt / vp check konsisten di Windows
+* text=auto eol=lf

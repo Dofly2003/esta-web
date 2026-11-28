@@ -1,0 +1,31 @@
+---
+// Pratinjau halaman publik sebuah karya (juga draf) untuk tim yang login. Halaman publik
+// /portfolio/[slug] tetap 404 untuk draf; halaman ini memakai template yang sama + banner pratinjau.
+import Site from "../../../../layouts/Site.astro";
+import PortfolioDetail from "../../../../components/PortfolioDetail.astro";
+import { apiOrNull, withFlash } from "../../../../lib/api";
+import type { PortfolioPreview } from "@shared/types";
+
+const id = Astro.params.id!;
+// karya + "karya lainnya" (sama dengan halaman publik: 3 karya tayang lain) dalam satu panggilan
+const data = await apiOrNull<PortfolioPreview>(Astro, `/api/portfolio/${encodeURIComponent(id)}/pratinjau`);
+if (!data) return Astro.redirect(withFlash("/dashboard/portfolio", { err: "pf-not-found" }));
+const { item, others } = data;
+// jangan diindeks mesin pencari (halaman juga hanya bisa dibuka setelah login)
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow");
+---
+
+<Site title={`Pratinjau: ${item.title}`} description={item.summary}>
+  <PortfolioDetail item={item} others={others} />
+  {/* menempel di bawah layar selama artikel terlihat, lalu berhenti di atas footer (tidak menutupi footer) */}
+  <div
+    role="note"
+    aria-label="Pratinjau"
+    class="mono sticky inset-x-0 bottom-0 z-[60] flex flex-wrap items-center justify-between gap-x-6 gap-y-2 bg-sky px-4 py-3 text-[12px] text-ink"
+  >
+    <span>
+      {item.published ? "Pratinjau — versi tersimpan, sudah tayang di website" : "Pratinjau — belum tayang (draf, hanya terlihat oleh tim)"}
+    </span>
+    <a href={`/dashboard/portfolio/${item.id}`} class="underline underline-offset-4">◂ Kembali ke editor</a>
+  </div>
+</Site>

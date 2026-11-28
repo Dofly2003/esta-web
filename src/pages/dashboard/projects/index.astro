@@ -3,83 +3,355 @@ import Dash from "../../../layouts/Dash.astro";
 import PageHeader from "../../../components/dash/PageHeader.astro";
 import Badge from "../../../components/dash/Badge.astro";
 import Progress from "../../../components/dash/Progress.astro";
-import Avatar from "../../../components/dash/Avatar.astro";
+import Person from "../../../components/dash/Person.astro";
+import Due from "../../../components/dash/Due.astro";
+import Icon from "../../../components/dash/Icon.astro";
+import Panel from "../../../components/dash/Panel.astro";
 import ProjectForm from "../../../components/dash/ProjectForm.astro";
-import { pill } from "../../../components/dash/ui";
-import { api } from "../../../lib/api";
-import { PROJECT_STATUS, PROJECT_TYPES } from "@shared/constants";
-import { fmtDate, isOverdue, progress } from "@shared/format";
-import type { Project, Task, User } from "@shared/types";
+import SegFilter from "../../../components/dash/SegFilter.astro";
+import EmptyState from "../../../components/dash/EmptyState.astro";
+import Options from "../../../components/dash/Options.astro";
+import { errIn } from "../../../components/dash/ui";
+import { api, apiOrNull, apiPath } from "../../../lib/api";
+import { INQUIRY_STATUS_ALL, labelOf, PROJECT_STATUS, PROJECT_TYPES } from "@shared/constants";
+import { elapsed, fmtDate, isLate } from "@shared/format";
+import { projectsQuery, readQuery, type ProjectSort } from "@shared/schemas/query";
+import type { Inquiry, Project, ProjectsResponse } from "@shared/types";
 
 const sp = Astro.url.searchParams;
-const status = sp.get("status") ?? "";
-const type = sp.get("type") ?? "";
-const q = sp.get("q") ?? "";
-const query = new URLSearchParams({ status, type, q }).toString();
-const { projects, users } = await api<{ projects: (Project & { lead: User | null; tasks: Task[] })[]; users: User[] }>(
-  Astro,
-  `/api/projects?${query}`,
-);
+// status / jenis / urutan yang tidak dikenal diabaikan (skema yang sama dengan /api/projects)
+const { status, type, q, pf, sort } = readQuery(projectsQuery, sp);
+const SORTS: Record<ProjectSort, string> = { deadline: "Deadline", name: "Nama", progress: "Progres", updated: "Terakhir diubah" };
+const creating = sp.has("new");
+// Inbox → "Jadikan proyek": ?new=1&dari=<id inquiry> mengisi form proyek baru dari inquiry itu
+const dari = creating && /^[\w-]{1,64}$/.test(sp.get("dari") ?? "") ? sp.get("dari")! : "";
+const [{ projects, users, counts }, inquiry] = await Promise.all([
+  api<ProjectsResponse>(Astro, apiPath("/api/projects", { status, type, q, pf, sort })),
+  dari ? apiOrNull<Inquiry>(Astro, `/api/inquiries/${encodeURIComponent(dari)}`) : Promise.resolve(null),
+]);
+const prefill: Partial<Project> | undefined = inquiry
+  ? {
+      name: [inquiry.service || "Proyek", inquiry.company || inquiry.name].join(" "),
+      client: inquiry.company || inquiry.name,
+      // asal proyek dicatat di deskripsi (tidak ada kolom tautan inquiry↔proyek di database)
+      description: [
+        inquiry.message,
+        "",
+        `— Dari inquiry ${inquiry.name} <${inquiry.email}>, ${fmtDate(inquiry.createdAt)}${inquiry.budget ? ` · budget ${inquiry.budget}` : ""}${inquiry.service ? ` · ${inquiry.service}` : ""}.`,
+      ].join("\n"),
+    }
+  : undefined;
+// presentasi saja
+const filtered = Boolean(status || type || q || pf);
+const base = { status, type, q, pf, sort: sort === "deadline" ? "" : sort };
+// tautan filter mempertahankan filter lain
+const listHref = (p: Record<string, string>) => apiPath("/dashboard/projects", { ...base, ...p });
+const statusItems = [
+  { href: listHref({ status: "" }), label: "Semua", current: !status, count: counts.ALL },
+  { href: listHref({ status: "ACTIVE" }), label: "Berjalan", current: status === "ACTIVE", count: counts.ACTIVE, title: "Perencanaan, Dikerjakan, dan Review Klien" },
+  ...Object.entries(PROJECT_STATUS).map(([k, v]) => ({ href: listHref({ status: k }), label: v.label, current: status === k, count: counts[k] ?? 0 })),
+].map((i) => ({ ...i, countSr: "proyek" }));
+const CREATE_ERRS = ["project-required", "project-name-required", "project-client-required", "budget-invalid", "project-dates", "date-invalid"] as const;
+const createErr = errIn(Astro.url, CREATE_ERRS);
+// judul kosong menyebut SEMUA filter aktif (bukan hanya kata kunci)
+const active = [
+  q && `kata kunci “${q}”`,
+  status && `status ${status === "ACTIVE" ? "Berjalan" : labelOf(PROJECT_STATUS, status)}`,
+  type && `jenis ${PROJECT_TYPES[type]}`,
+  pf && "belum di portofolio",
+].filter(Boolean);
+const emptyTitle = active.length ? `Tidak ada proyek dengan ${active.join(", ")}.` : "Belum ada proyek.";
+// kepala kolom yang bisa diurutkan (aria-sort pada kolom aktif)
+const sortHead = (key: keyof typeof SORTS) => ({ href: listHref({ sort: key === "deadline" ? "" : key }) + "#h-list", current: sort === key });
 ---
 
-<Dash title="Proyek">
-  <PageHeader title="Proyek" subtitle="Semua proyek website, web app, mobile app, dan desain." />
-
-  <details open={sp.has("new")} class="card mb-6 p-5">
-    <summary class="font-semibold text-accent">+ Tambah proyek baru</summary>
-    <div class="mt-5"><ProjectForm action="/api/projects" users={users} submitLabel="Buat proyek" /></div>
-  </details>
-
-  <div class="mb-4 flex flex-wrap items-center gap-2">
-    <a href="/dashboard/projects" class={pill(!status)}>Semua</a>
-    {Object.entries(PROJECT_STATUS).map(([k, v]) => <a href={`/dashboard/projects?status=${k}`} class={pill(status === k)}>{v.label}</a>)}
-    <form class="ml-auto flex gap-2">
-      {status && <input type="hidden" name="status" value={status} />}
-      <select name="type" class="input w-auto">
-        <option value="">Semua jenis</option>
-        {Object.entries(PROJECT_TYPES).map(([k, v]) => <option value={k} selected={type === k}>{v}</option>)}
-      </select>
-      <input name="q" value={q} placeholder="Cari proyek / klien" class="input w-44" />
-      <button class="btn-ghost">Cari</button>
-    </form>
-  </div>
-
+<Dash title="Proyek" inlineErrors={CREATE_ERRS}>
   {
-    projects.length === 0 ? (
-      <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500">Belum ada proyek yang cocok.</p>
+    creating ? (
+      <a slot="actions" href={listHref({})} class="btn btn-sm">
+        Batal
+      </a>
     ) : (
-      <div class="card overflow-x-auto">
-        <table class="w-full min-w-[760px] text-sm">
-          <thead class="border-b border-zinc-200 text-left text-xs text-zinc-500">
-            <tr>
-              <th class="px-4 py-3 font-semibold">Proyek</th>
-              <th class="px-4 py-3 font-semibold">Jenis</th>
-              <th class="px-4 py-3 font-semibold">Status</th>
-              <th class="px-4 py-3 font-semibold">PJ</th>
-              <th class="px-4 py-3 font-semibold">Deadline</th>
-              <th class="w-44 px-4 py-3 font-semibold">Progres</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-zinc-100">
-            {projects.map((p) => (
-              <tr class="hover:bg-zinc-50">
-                <td class="px-4 py-3">
-                  <a href={`/dashboard/projects/${p.id}`} class="font-semibold hover:text-accent">{p.name}</a>
-                  <p class="text-xs text-zinc-500">{p.client}</p>
-                </td>
-                <td class="px-4 py-3 text-zinc-600">{PROJECT_TYPES[p.type]}</td>
-                <td class="px-4 py-3"><Badge opt={PROJECT_STATUS[p.status]} /></td>
-                <td class="px-4 py-3"><Avatar name={p.lead?.name} /></td>
-                <td class:list={["px-4 py-3", isOverdue(p.dueDate, p.status === "DONE") ? "font-semibold text-rose-600" : "text-zinc-600"]}>{fmtDate(p.dueDate)}</td>
-                <td class="px-4 py-3">
-                  <Progress value={progress(p.tasks)} />
-                  <p class="mt-0.5 text-[11px] text-zinc-400">{p.tasks.filter((t) => t.status === "DONE").length}/{p.tasks.length} tugas</p>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <a slot="actions" href={listHref({ new: "1" }) + "#proyek-baru"} class="btn-primary btn-sm">
+        <Icon name="plus" class="ic-sm" />
+        Proyek baru
+      </a>
     )
   }
+
+  <PageHeader title="Proyek" subtitle="Semua proyek website, web app, mobile app, dan desain." />
+
+  <div class="stack">
+    {
+      creating && (
+        <Panel id="proyek-baru" title="Proyek baru">
+          {inquiry && (
+            <p slot="head" class="cap">
+              Diisi dari inquiry {inquiry.name}
+              {inquiry.company && <> · {inquiry.company}</>} ({labelOf(INQUIRY_STATUS_ALL, inquiry.status)}). Setelah dibuat, inquiry
+              ditandai “Jadi proyek”.
+            </p>
+          )}
+          <div class="pad">
+            <ProjectForm
+              action="/api/projects"
+              users={users}
+              submitLabel="Buat proyek"
+              idPrefix="new"
+              back={apiPath("/dashboard/projects", { ...base, new: 1, dari }) + "#proyek-baru"}
+              error={createErr}
+              prefill={prefill}
+              inquiryId={inquiry?.id}
+              autofocus={!createErr}
+            />
+          </div>
+        </Panel>
+      )
+    }
+
+    <section class="sec" aria-labelledby="h-list">
+      <h2 class="vh" id="h-list">Daftar proyek</h2>
+      <div class="filters">
+        <SegFilter label="Filter status" items={statusItems} />
+        {pf && (
+          <a href={listHref({ pf: "" })} class="btn tgl-link is-on">
+            Belum di portofolio<span class="vh"> (filter aktif, klik untuk melepas)</span>
+          </a>
+        )}
+        <form class="filters filters-end proj-search" role="search" aria-label="Cari proyek">
+          {status && <input type="hidden" name="status" value={status} />}
+          {pf && <input type="hidden" name="pf" value={pf} />}
+          {sort !== "deadline" && <input type="hidden" name="sort" value={sort} />}
+          <select name="type" class="input" aria-label="Jenis proyek">
+            <option value="">Semua jenis</option>
+            <Options from={PROJECT_TYPES} selected={type} />
+          </select>
+          <input type="search" name="q" value={q} placeholder="Cari proyek atau klien…" aria-label="Cari proyek atau klien" class="input proj-q" />
+          <button type="submit" class="btn">
+            <Icon name="search" class="ic-sm" />Cari
+          </button>
+        </form>
+      </div>
+      <p class="cap num list-meta" id="sort-note">
+        <span>
+          {projects.length} proyek · urutan: {sort === "deadline" ? "proyek berjalan dulu, lalu deadline terdekat" : SORTS[sort].toLowerCase()}
+        </span>
+        {filtered && projects.length > 0 && (
+          <a href="/dashboard/projects" class="link">
+            Hapus filter
+          </a>
+        )}
+      </p>
+
+      {
+        projects.length === 0 ? (
+          <EmptyState icon={filtered ? "search" : "folder"} title={emptyTitle} text={filtered ? "Coba ganti status, jenis, atau kata kunci pencarian." : undefined}>
+            <Fragment slot="actions">
+              {active.length > 0 && (
+                <a href="/dashboard/projects" class="btn btn-sm">
+                  Hapus filter
+                </a>
+              )}
+              <a href="/dashboard/projects?new=1#proyek-baru" class="btn btn-sm">
+                <Icon name="plus" class="ic-sm" />
+                Proyek baru
+              </a>
+            </Fragment>
+          </EmptyState>
+        ) : (
+          <div class="tbl-wrap">
+            <table class="tbl tbl-cards is-md ptbl">
+              <caption class="vh">Daftar proyek, {projects.length} hasil</caption>
+              <thead>
+                <tr>
+                  <th scope="col" aria-sort={sortHead("name").current ? "ascending" : undefined}>
+                    <a href={sortHead("name").href} class="link-plain">Proyek<span class="vh"> (urutkan menurut nama)</span></a>
+                  </th>
+                  <th scope="col" class="c-type">Jenis</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" class="c-lead">
+                    <abbr title="Penanggung jawab">PJ</abbr>
+                  </th>
+                  <th scope="col" aria-sort={sortHead("deadline").current ? "ascending" : undefined}>
+                    <a href={sortHead("deadline").href} class="link-plain">Deadline<span class="vh"> (urutkan menurut deadline)</span></a>
+                  </th>
+                  <th scope="col" class="c-prog" aria-sort={sortHead("progress").current ? "ascending" : undefined}>
+                    <a href={sortHead("progress").href} class="link-plain">Progres<span class="vh"> (urutkan dari progres terendah)</span></a>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {projects.map((p) => {
+                  const late = isLate(p);
+                  return (
+                    <tr>
+                      <td class="c-name">
+                        <a href={`/dashboard/projects/${p.id}`} class="rl">
+                          {p.name}
+                        </a>
+                        <span class="sub">
+                          {p.client}
+                          <span class="sub-type"> · {PROJECT_TYPES[p.type]}</span>
+                        </span>
+                      </td>
+                      <td class="c-type t-2" data-label="Jenis">
+                        {PROJECT_TYPES[p.type]}
+                      </td>
+                      <td class="c-status">
+                        <span class="status-cell">
+                          <Badge opt={PROJECT_STATUS[p.status]} />
+                          {p.status === "DONE" && !p.hasPortfolio && <span class="cap pf-missing">Belum di portofolio</span>}
+                        </span>
+                      </td>
+                      <td class="c-lead" data-label="Penanggung jawab">
+                        <Person name={p.lead?.name} fallback="Tanpa PJ" class="lead" />
+                      </td>
+                      <Due as="td" date={p.dueDate} late={late} class="c-due num" quietClass="t-2" rel={p.status !== "DONE"} />
+                      <td class="c-prog">
+                        <Progress done={p.doneTasks} total={p.totalTasks} name={p.name} elapsed={p.status === "DONE" ? null : elapsed(p)} late={late} />
+                        {p.totalTasks > 0 && (
+                          <span class="sub num">
+                            {p.doneTasks}/{p.totalTasks} tugas
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </section>
+  </div>
 </Dash>
+
+<style>
+  .proj-search > select {
+    width: auto;
+  }
+  .proj-q {
+    width: 14rem;
+  }
+  .ptbl tbody tr {
+    position: relative;
+  }
+  /* seluruh baris bisa diklik lewat tautan utama */
+  .ptbl .rl::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  .status-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .pf-missing {
+    white-space: nowrap;
+  }
+  .lead {
+    max-width: 10rem;
+  }
+  .ptbl .c-prog {
+    width: 12rem;
+  }
+  /* angka progres rata kanan → kepala kolomnya juga */
+  .ptbl th.c-prog {
+    text-align: right;
+  }
+  .sub-type {
+    display: none;
+  }
+  @media (max-width: 899px) {
+    .proj-search > select {
+      flex: 1 1 10rem;
+    }
+    .proj-q {
+      flex: 1 1 12rem;
+      width: auto;
+    }
+  }
+  /* tabel (>= 1024px) tanpa gulir tersembunyi: kolom berprioritas */
+  @media (min-width: 1024px) {
+    .ptbl td {
+      height: var(--row-h);
+    }
+    .ptbl .c-name {
+      min-width: 12rem;
+    }
+    .ptbl .c-due {
+      white-space: nowrap;
+    }
+  }
+  /* 1024–1279px: kolom Jenis dilipat ke baris klien ("Klien · Website") */
+  @media (min-width: 1024px) and (max-width: 1279px) {
+    .ptbl .c-type {
+      display: none;
+    }
+    .sub-type {
+      display: inline;
+    }
+    .ptbl .c-prog {
+      width: 10rem;
+    }
+  }
+  /* 1024–1199px: penanggung jawab hanya avatar (nama di tooltip & pembaca layar) */
+  @media (min-width: 1024px) and (max-width: 1199px) {
+    .ptbl td.c-lead :global(.person > :not(.avatar)) {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+    .ptbl .c-due :global(.due) {
+      flex-wrap: wrap;
+    }
+  }
+  /* < 1024px: tiap baris jadi kartu (.tbl-cards.is-md); nama selebar mungkin, deadline di baris sendiri */
+  @media (max-width: 1023px) {
+    .ptbl tbody tr {
+      grid-template-areas:
+        "name status"
+        "due due"
+        "type lead"
+        "prog prog";
+    }
+    .ptbl .c-name {
+      grid-area: name;
+    }
+    .ptbl .c-status {
+      grid-area: status;
+    }
+    .status-cell {
+      align-items: flex-end;
+    }
+    .ptbl .c-type {
+      grid-area: type;
+      align-self: center;
+    }
+    .ptbl .c-due {
+      grid-area: due;
+      text-align: left;
+    }
+    .ptbl .c-lead {
+      grid-area: lead;
+      justify-self: end;
+    }
+    .ptbl .c-prog {
+      grid-area: prog;
+      width: auto;
+    }
+    .ptbl .c-prog .sub {
+      display: none;
+    }
+    .lead {
+      max-width: none;
+    }
+  }
+</style>

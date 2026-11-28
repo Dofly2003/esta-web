@@ -1,0 +1,15 @@
+/* ============================================================
+   CSS dashboard tim + halaman login (layouts/Dash.astro, pages/login.astro). Website publik memakai site.css.
+   Tailwind hanya memindai berkas dashboard (source(none) + @source); urutan impor sama dengan global.css dulu:
+   tailwind → dashboard.css → dasar bersama (tokens.css).
+   ============================================================ */
+@import "tailwindcss" source(none);
+@import "./dashboard.css";
+@import "./tokens.css";
+@source "../layouts/Dash.astro";
+@source "../layouts/Base.astro";
+@source "../pages/login.astro";
+@source "../pages/dashboard";
+@source not "../pages/dashboard/portfolio/*/pratinjau.astro";
+@source "../components/dash";
+@source "../../shared";

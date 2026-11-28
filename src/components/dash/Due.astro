@@ -1,0 +1,62 @@
+---
+// Deadline: tanggal + jarak relatif ("lewat 3 hari", "hari ini", "besok", "5 hari lagi").
+// Lewat deadline tidak pernah hanya warna: ikon peringatan + teks "lewat N hari" + .is-late (merah).
+// Ikon + tanggal ada di .due-main (tidak pernah terpisah baris); hanya .due-rel yang boleh turun.
+//   icon     → ikon kalender saat belum lewat (saat lewat selalu ikon peringatan)
+//   rel      → tampilkan jarak relatif (default true)
+//   blank    → tanpa tanggal tampil kosong (bukan "—")
+//   as="td"  → dibungkus <td> (atribut lain, mis. data-label, ke <td>)
+import Icon from "./Icon.astro";
+import { dueText, fmtDate, relDays } from "@shared/format";
+
+interface Props {
+  date: string | null;
+  late: boolean;
+  as?: "span" | "td";
+  class?: string;
+  /** kelas saat tidak lewat deadline, mis. "t-2" */
+  quietClass?: string;
+  icon?: boolean;
+  rel?: boolean;
+  blank?: boolean;
+  [attr: string]: unknown;
+}
+const { date, late, as = "span", class: cls, quietClass, icon = false, rel = true, blank = false, ...attrs } = Astro.props;
+const text = date && rel ? dueText(date, late) : null;
+const today = !late && relDays(date) === 0;
+const classes = ["due", late ? "is-late" : quietClass, today && "is-soon"];
+---
+
+{
+  as === "td" ? (
+    <td class={cls} {...attrs}>
+      <span class:list={classes}>
+        <span class="due-main">
+          {late ? <Icon name="alert" class="ic-sm" /> : icon && date && <Icon name="calendar" class="ic-sm" />}
+          {late && !text && <span class="vh">Lewat deadline: </span>}
+          {date ? <time datetime={date}>{fmtDate(date)}</time> : blank ? "" : "—"}
+        </span>
+        {text && (
+          <span class="due-rel">
+            <span aria-hidden="true">· </span>
+            {text}
+          </span>
+        )}
+      </span>
+    </td>
+  ) : (
+    <span class:list={[...classes, cls]} {...attrs}>
+      <span class="due-main">
+        {late ? <Icon name="alert" class="ic-sm" /> : icon && date && <Icon name="calendar" class="ic-sm" />}
+        {late && !text && <span class="vh">Lewat deadline: </span>}
+        {date ? <time datetime={date}>{fmtDate(date)}</time> : blank ? "" : "—"}
+      </span>
+      {text && (
+        <span class="due-rel">
+          <span aria-hidden="true">· </span>
+          {text}
+        </span>
+      )}
+    </span>
+  )
+}

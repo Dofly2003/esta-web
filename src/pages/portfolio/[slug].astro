@@ -1,65 +1,17 @@
 ---
 import Site from "../../layouts/Site.astro";
-import Cover from "../../components/Cover.astro";
-import PortfolioCard from "../../components/PortfolioCard.astro";
+import PortfolioDetail from "../../components/PortfolioDetail.astro";
 import { apiOrNull } from "../../lib/api";
-import type { PortfolioItem } from "@shared/types";
+import type { PublicPortfolioDetail } from "@shared/types";
 
-const data = await apiOrNull<{ item: PortfolioItem; others: PortfolioItem[] }>(
+const data = await apiOrNull<PublicPortfolioDetail>(
   Astro,
   `/api/public/portfolio/${encodeURIComponent(Astro.params.slug!)}`,
 );
 if (!data) return Astro.rewrite("/404");
 const { item, others } = data;
-const tags = item.tags.split(",").map((t) => t.trim()).filter(Boolean);
-const paragraphs = item.content.split(/\n\s*\n/).filter(Boolean);
 ---
 
 <Site title={item.title} description={item.summary}>
-  <article class="mx-auto max-w-6xl px-4 py-16">
-    <a href="/portfolio" class="text-sm text-white/60 hover:text-white">← Semua karya</a>
-    <h1 class="mt-6 max-w-3xl text-4xl font-extrabold tracking-tight sm:text-6xl">{item.title}</h1>
-    {item.summary && <p class="mt-5 max-w-2xl text-lg text-white/60">{item.summary}</p>}
-
-    <dl class="mt-10 grid grid-cols-2 gap-6 border-y border-white/10 py-6 text-sm sm:grid-cols-4">
-      <div><dt class="text-white/40">Klien</dt><dd class="mt-1 font-semibold">{item.client || "—"}</dd></div>
-      <div><dt class="text-white/40">Kategori</dt><dd class="mt-1 font-semibold">{item.category}</dd></div>
-      <div><dt class="text-white/40">Tahun</dt><dd class="mt-1 font-semibold">{item.year}</dd></div>
-      <div>
-        <dt class="text-white/40">Link</dt>
-        <dd class="mt-1 font-semibold">
-          {item.liveUrl ? <a href={item.liveUrl} target="_blank" rel="noreferrer" class="text-accent-2 hover:underline">Kunjungi ↗</a> : "—"}
-        </dd>
-      </div>
-    </dl>
-
-    <div class="mt-10 aspect-[16/9] overflow-hidden rounded-3xl bg-ink-3"><Cover item={item} /></div>
-
-    <div class="mt-12 grid gap-10 md:grid-cols-3">
-      <div class="space-y-5 text-white/75 md:col-span-2">
-        {paragraphs.length ? paragraphs.map((p) => <p>{p}</p>) : <p>{item.summary}</p>}
-      </div>
-      {
-        tags.length > 0 && (
-          <div>
-            <p class="mb-3 text-sm font-semibold">Teknologi & lingkup</p>
-            <div class="flex flex-wrap gap-2">
-              {tags.map((t) => <span class="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70">{t}</span>)}
-            </div>
-          </div>
-        )
-      }
-    </div>
-
-    {
-      others.length > 0 && (
-        <section class="mt-24 border-t border-white/10 pt-12">
-          <h2 class="text-2xl font-extrabold">Karya lainnya</h2>
-          <div class="mt-8 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
-            {others.map((o) => <PortfolioCard item={o} />)}
-          </div>
-        </section>
-      )
-    }
-  </article>
+  <PortfolioDetail item={item} others={others} />
 </Site>

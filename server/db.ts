@@ -1,20 +1,25 @@
 // Koneksi database lewat libSQL:
 // - Lokal  : file SQLite (DATABASE_PATH, default data/esta.sqlite)
 // - Online : Turso (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN) — SQLite di cloud
-import { createClient, type InArgs, type Row } from "@libsql/client";
+// Catatan kinerja (lokal / self-host saja): klien file libSQL menjalankan query secara SINKRON di thread utama,
+// jadi query lambat menahan semua request lain selama berjalan. Karena itu setiap endpoint memakai query terarah
+// (indeks migrasi #2, tanpa memuat seluruh tabel) dalam satu batch (readMany). Di Vercel + Turso query berjalan
+// async lewat HTTP. Backend bun:sqlite untuk file: lebih cepat tapi berarti dua driver; belum dipakai.
+import { createClient, type Client, type InArgs, type Row } from "@libsql/client";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { envDatabaseUrl, envOf } from "./env";
 
-const remote = process.env.TURSO_DATABASE_URL;
+const remote = envDatabaseUrl();
 let url = remote;
 if (!url) {
-  const path = resolve(process.env.DATABASE_PATH || "data/esta.sqlite");
+  const path = resolve(envOf("DATABASE_PATH"));
   mkdirSync(dirname(path), { recursive: true });
   url = "file:" + path.replace(/\\/g, "/");
 }
 
-export const client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN, intMode: "number" });
-export const isRemote = !!remote;
+export const client = createClient({ url, authToken: envOf("TURSO_AUTH_TOKEN") || undefined, intMode: "number" });
+const isRemote = !!remote;
 
 const migrations: string[] = [
   /* 1: skema awal */ `
@@ -96,25 +101,66 @@ const migrations: string[] = [
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );`,
+  /* 2: indeks untuk ringkasan / daftar (hitungan per status, Inbox per halaman, sapu sesi kedaluwarsa) */ `
+  CREATE INDEX IF NOT EXISTS inquiries_status_created ON inquiries(status, created_at);
+  CREATE INDEX IF NOT EXISTS inquiries_created ON inquiries(created_at);
+  CREATE INDEX IF NOT EXISTS portfolio_project ON portfolio(project_id);
+  CREATE INDEX IF NOT EXISTS portfolio_pub_order ON portfolio(published, sort_order, year);
+  CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires_at);
+  CREATE INDEX IF NOT EXISTS tasks_status_project ON tasks(status, project_id);`,
 ];
 
-async function migrate() {
-  if (!isRemote) await client.executeMultiple("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
-  await client.execute(
-    "CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)",
-  );
-  const done = (await client.execute("SELECT COALESCE(MAX(version), 0) AS v FROM _migrations")).rows[0]!.v as number;
-  for (let v = done; v < migrations.length; v++) {
-    await client.executeMultiple(migrations[v]!);
-    await client.execute({ sql: "INSERT INTO _migrations (version, applied_at) VALUES (?, ?)", args: [v + 1, now()] });
+const appliedVersion = async (c: Pick<Client, "execute">) =>
+  Number((await c.execute("SELECT COALESCE(MAX(version), 0) AS v FROM _migrations")).rows[0]!.v);
+
+/**
+ * Terapkan migrasi yang belum ada. Aman bila beberapa instance cold start bersamaan (Vercel + Turso, atau dua
+ * proses pada file yang sama): tiap versi dijalankan di dalam transaksi tulis, versinya dicek ulang di dalam
+ * transaksi, dan pencatatan memakai INSERT OR IGNORE. Pernyataan migrasi sebaiknya tetap idempoten
+ * (CREATE … IF NOT EXISTS).
+ */
+export async function migrate(c: Client = client, local = !isRemote) {
+  // busy_timeout dulu: proses lain yang sedang menulis ditunggu, bukan langsung SQLITE_BUSY.
+  // Klien file libSQL membuka koneksi BARU setelah transaksi, jadi busy_timeout dipasang lagi sesudahnya.
+  const busyTimeout = () => (local ? c.execute("PRAGMA busy_timeout = 5000") : null);
+  await busyTimeout();
+  if (local) await c.execute("PRAGMA journal_mode = WAL");
+  await c.execute("CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)");
+  while ((await appliedVersion(c)) < migrations.length) {
+    const tx = await c.transaction("write");
+    try {
+      const v = await appliedVersion(tx);
+      if (v < migrations.length) {
+        await tx.executeMultiple(migrations[v]!);
+        await tx.execute({
+          sql: "INSERT OR IGNORE INTO _migrations (version, applied_at) VALUES (?, ?)",
+          args: [v + 1, now()],
+        });
+      }
+      await tx.commit();
+    } finally {
+      tx.close();
+      await busyTimeout();
+    }
   }
 }
 
-/** Selesai saat skema siap. Semua query menunggu ini. */
-export const ready = migrate();
+/** fn dijalankan sekali; bila gagal (mis. jaringan putus saat cold start), panggilan berikutnya mencoba lagi
+ * (tidak tersangkut di promise yang ditolak selamanya) */
+export function retryingOnce<T>(fn: () => Promise<T>) {
+  let pending: Promise<T> | null = null;
+  return () =>
+    (pending ??= fn().catch((e) => {
+      pending = null;
+      throw e;
+    }));
+}
+
+/** Selesai saat skema siap. Semua query menunggu ini; bila migrasi gagal, query berikutnya mencoba lagi. */
+export const ready = retryingOnce(() => migrate());
 
 export async function rows(sql: string, args: InArgs = {}): Promise<Row[]> {
-  await ready;
+  await ready();
   return (await client.execute({ sql, args })).rows;
 }
 
@@ -123,17 +169,27 @@ export async function first(sql: string, args: InArgs = {}): Promise<Row | null>
 }
 
 export async function run(sql: string, args: InArgs = {}) {
-  await ready;
+  await ready();
   await client.execute({ sql, args });
 }
 
+/** Satu perintah SQL dengan argumen (untuk batch) */
+export type Stmt = { sql: string; args?: InArgs };
+
+const toBatch = (stmts: Stmt[]) => stmts.map((s) => ({ sql: s.sql, args: s.args ?? {} }));
+
 /** Beberapa perintah tulis sekaligus secara atomik */
-export async function batch(stmts: { sql: string; args?: InArgs }[]) {
-  await ready;
-  await client.batch(
-    stmts.map((s) => ({ sql: s.sql, args: s.args ?? {} })),
-    "write",
-  );
+export async function batch(stmts: Stmt[]) {
+  await ready();
+  await client.batch(toBatch(stmts), "write");
+}
+
+/** Beberapa query baca sekaligus: satu round trip ke Turso dan satu snapshot yang konsisten (di file lokal: satu
+ * transaksi baca). Hasil = baris per pernyataan, urutannya sama dengan `stmts`. */
+export async function readMany(stmts: Stmt[]): Promise<Row[][]> {
+  await ready();
+  if (stmts.length === 1) return [(await client.execute(toBatch(stmts)[0]!)).rows];
+  return (await client.batch(toBatch(stmts), "read")).map((r) => r.rows);
 }
 
 export const now = () => new Date().toISOString();
