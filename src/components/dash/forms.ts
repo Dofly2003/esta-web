@@ -89,7 +89,8 @@ function hashId() {
 const fields = (form: HTMLFormElement) =>
   Array.from(form.elements).filter(
     (el): el is Control =>
-      (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) && !!el.name,
+      (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) &&
+      !!el.name,
   );
 const isCheck = (el: Element): el is HTMLInputElement =>
   el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio");
@@ -158,7 +159,8 @@ function pending() {
     if (e.defaultPrevented) return;
     form.dataset.pending = "";
     form.setAttribute("aria-busy", "true");
-    const btn = (e.submitter as HTMLButtonElement | null) ?? form.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const btn =
+      (e.submitter as HTMLButtonElement | null) ?? form.querySelector<HTMLButtonElement>('button[type="submit"]');
     if (btn) {
       btn.dataset.html = btn.innerHTML;
       btn.setAttribute("aria-disabled", "true");
@@ -202,7 +204,8 @@ function snapshot() {
     if (!(form instanceof HTMLFormElement) || form.dataset.keep == null || e.defaultPrevented) return;
     const values: Snapshot["values"] = [];
     for (const el of fields(form)) {
-      if (el instanceof HTMLInputElement && (el.type === "password" || el.type === "hidden" || el.type === "file")) continue;
+      if (el instanceof HTMLInputElement && (el.type === "password" || el.type === "hidden" || el.type === "file"))
+        continue;
       values.push([el.name, isCheck(el) ? el.checked : el.value, changed(el)]);
     }
     writeStore({ path: location.pathname, key: keepKey(form), at: Date.now(), values });
@@ -217,7 +220,8 @@ function apply(form: HTMLFormElement, snap: Snapshot, only?: string[]) {
     if (only ? !only.includes(name) : wasChanged === false) continue;
     const el = form.elements.namedItem(name);
     if (isCheck(el as Element)) (el as HTMLInputElement).checked = v === true;
-    else if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) el.value = String(v);
+    else if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)
+      el.value = String(v);
     else continue;
     first ??= el as Control;
   }
@@ -227,7 +231,9 @@ function apply(form: HTMLFormElement, snap: Snapshot, only?: string[]) {
 }
 
 function flashText(kind: "err" | "info") {
-  return document.querySelector(`[data-flash="${kind}"] > span, [data-flash-inline="${kind}"]`)?.textContent?.trim() || "";
+  return (
+    document.querySelector(`[data-flash="${kind}"] > span, [data-flash-inline="${kind}"]`)?.textContent?.trim() || ""
+  );
 }
 
 /** Tandai field yang error + pesan di bawahnya (kecuali server sudah merendernya), lalu fokus */
@@ -235,8 +241,13 @@ function markErrors(form: HTMLFormElement, err: string) {
   const names = ERR_FIELDS[err] ?? [];
   const els = names
     .map((n) => form.elements.namedItem(n))
-    .filter((el): el is Control => el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement);
-  const rendered = form.querySelector<HTMLElement>('[aria-invalid="true"]') ?? document.querySelector<HTMLElement>(`[aria-invalid="true"][form="${CSS.escape(form.id || "-")}"]`);
+    .filter(
+      (el): el is Control =>
+        el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement,
+    );
+  const rendered =
+    form.querySelector<HTMLElement>('[aria-invalid="true"]') ??
+    document.querySelector<HTMLElement>(`[aria-invalid="true"][form="${CSS.escape(form.id || "-")}"]`);
   if (rendered) {
     focusLater(rendered);
     return;
@@ -299,7 +310,8 @@ function restore(err: string | null, ok: string | null) {
   writeStore(null);
   // halaman login karena sesi berakhir: simpan isian form dashboard untuk dipulihkan setelah masuk lagi
   if (location.pathname === "/login") {
-    if (snap && snap.path !== "/login" && err && AUTH_ERRS.includes(err)) writeStore({ ...snap, at: Date.now() }, DRAFT_KEY);
+    if (snap && snap.path !== "/login" && err && AUTH_ERRS.includes(err))
+      writeStore({ ...snap, at: Date.now() }, DRAFT_KEY);
     else if (snap?.path === "/login" && err) {
       const form = formByKey(snap.key);
       if (form) apply(form, snap);
@@ -311,7 +323,8 @@ function restore(err: string | null, ok: string | null) {
   // berhasil: isi lagi field yang diminta form (data-keep-ok / data-keep-fields), tanpa menandai "belum disimpan"
   if (ok && snap && snap.path === location.pathname) {
     const form = formByKey(snap.key);
-    if (form && (form.dataset.keepOk ?? "").split(" ").includes(ok)) apply(form, snap, (form.dataset.keepFields ?? "").split(" "));
+    if (form && (form.dataset.keepOk ?? "").split(" ").includes(ok))
+      apply(form, snap, (form.dataset.keepFields ?? "").split(" "));
   }
   if (!err) return null;
   const hashEl = location.hash ? document.getElementById(hashId()) : null;
@@ -330,7 +343,9 @@ function guard() {
   for (const form of $$<HTMLFormElement>("form[data-guard], form.status-form")) {
     const mark = () => {
       // form status: kembali ke nilai awal = tidak ada perubahan
-      const sel = form.classList.contains("status-form") ? form.querySelector<HTMLSelectElement>("select[data-autosubmit]") : null;
+      const sel = form.classList.contains("status-form")
+        ? form.querySelector<HTMLSelectElement>("select[data-autosubmit]")
+        : null;
       if (sel && sel.value === sel.dataset.initial) delete form.dataset.dirty;
       else form.dataset.dirty = "";
     };
@@ -379,7 +394,8 @@ function popovers() {
   const reset = (d: HTMLDetailsElement) => {
     d.classList.remove("is-up", "is-left");
     const panel = panelOf(d);
-    if (panel) for (const k of ["position", "top", "bottom", "left", "right", "max-height"]) panel.style.removeProperty(k);
+    if (panel)
+      for (const k of ["position", "top", "bottom", "left", "right", "max-height"]) panel.style.removeProperty(k);
   };
   const close = (d: HTMLDetailsElement, focus: boolean) => {
     if (!d.open) return;
@@ -437,7 +453,9 @@ function popovers() {
       for (const o of pops()) if (o !== d && o.open) close(o, false);
       place(d);
       if (matchMedia("(pointer: fine)").matches)
-        d.querySelector<HTMLElement>(".pop-panel input:not([type=hidden]), .pop-panel select, .pop-panel textarea")?.focus({ preventScroll: true });
+        d.querySelector<HTMLElement>(
+          ".pop-panel input:not([type=hidden]), .pop-panel select, .pop-panel textarea",
+        )?.focus({ preventScroll: true });
     });
     // Batal: buang perubahan (form.reset() → nilai awal, data-dirty hilang) lalu tutup
     // tutup (x) di kepala lembar bawah: seperti Esc (isian tetap, ditandai bila berubah)
@@ -494,7 +512,8 @@ function segScroll() {
     new ResizeObserver(sync).observe(seg);
     // segmen aktif terlihat (mis. "Ditunda" di ujung kanan)
     const cur = seg.querySelector<HTMLElement>("[aria-current], [aria-pressed='true']");
-    if (cur && seg.scrollWidth > seg.clientWidth + 1) seg.scrollLeft = cur.offsetLeft - (seg.clientWidth - cur.offsetWidth) / 2;
+    if (cur && seg.scrollWidth > seg.clientWidth + 1)
+      seg.scrollLeft = cur.offsetLeft - (seg.clientWidth - cur.offsetWidth) / 2;
     sync();
   }
 }
@@ -566,7 +585,10 @@ function anchors(restored: HTMLFormElement | null, ok: string | null, err: strin
 /* ---------------- rupiah ---------------- */
 /** Sama dengan parseRupiah di shared/format.ts */
 function parseRupiah(v: string): number | null | "invalid" {
-  const s = v.trim().replace(/^rp\.?/i, "").replace(/\s+/g, "");
+  const s = v
+    .trim()
+    .replace(/^rp\.?/i, "")
+    .replace(/\s+/g, "");
   if (!s) return null;
   if (!/^\d+$/.test(s) && !/^\d{1,3}(\.\d{3})+$/.test(s)) return "invalid";
   const digits = s.replace(/\./g, "");
@@ -579,7 +601,8 @@ function rupiah() {
     if (!out) continue;
     const sync = () => {
       const n = parseRupiah(input.value);
-      out.textContent = n === "invalid" ? "Format tidak dikenali: tulis angka bulat, mis. 15.000.000" : n == null ? "" : fmt.format(n);
+      out.textContent =
+        n === "invalid" ? "Format tidak dikenali: tulis angka bulat, mis. 15.000.000" : n == null ? "" : fmt.format(n);
       out.classList.toggle("v-warn", n === "invalid");
     };
     input.addEventListener("input", sync);

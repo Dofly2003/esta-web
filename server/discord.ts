@@ -6,7 +6,14 @@ import type { Inquiry, Project, Task, User } from "../shared/types";
 import { labelOf, PRIORITY, PROJECT_STATUS, PROJECT_TYPES } from "../shared/constants";
 import { cutText, fmtDate } from "../shared/format";
 
-const COLORS = { HIGH: 0xe11d48, MEDIUM: 0x6d5efc, LOW: 0x64748b, PROJECT: 0x22d3ee, TEST: 0x10b981, INQUIRY: 0x38bdf8 };
+const COLORS = {
+  HIGH: 0xe11d48,
+  MEDIUM: 0x6d5efc,
+  LOW: 0x64748b,
+  PROJECT: 0x22d3ee,
+  TEST: 0x10b981,
+  INQUIRY: 0x38bdf8,
+};
 
 /** Batas waktu kirim notifikasi yang ditunggu request (tugas, PJ proyek). Di serverless (Vercel) kiriman yang
  * tidak ditunggu bisa hilang saat instance dibekukan, jadi semua notifikasi ditunggu dengan batas pendek. */
@@ -155,7 +162,7 @@ export function notifyProjectLead(opts: {
 
 /** Beberapa tugas sekaligus (daftar ditempel, satu baris = satu tugas) untuk satu orang: SATU pesan ringkasan */
 export function notifyTasksAssigned(opts: {
-  tasks: (Pick<Task, "id" | "title" | "priority" | "dueDate">)[];
+  tasks: Pick<Task, "id" | "title" | "priority" | "dueDate">[];
   project: Pick<Project, "id" | "name" | "client">;
   assignee: User;
   by: User;
@@ -190,20 +197,21 @@ export function notifyInquiry(
     { name: "🧩 Layanan", value: plain(q.service || "—", 100), inline: true },
     { name: "💰 Budget", value: plain(q.budget || "—", 60), inline: true },
   ];
-  return safe(() =>
-    send(
-      `📨 Inquiry baru dari **${plain(q.name, 80)}**. Website menjanjikan balasan maks. 1×24 jam.`,
-      {
-        title: `Inquiry: ${plain(q.name, 80)}${q.company ? ` · ${plain(q.company, 80)}` : ""}`,
-        url: `${siteUrl()}/dashboard/inbox?status=NEW#inq-${q.id}`,
-        description: plain(q.message, 500),
-        color: COLORS.INQUIRY,
-        fields,
-      },
-      [],
-      undefined,
-      capMs,
-    ),
+  return safe(
+    () =>
+      send(
+        `📨 Inquiry baru dari **${plain(q.name, 80)}**. Website menjanjikan balasan maks. 1×24 jam.`,
+        {
+          title: `Inquiry: ${plain(q.name, 80)}${q.company ? ` · ${plain(q.company, 80)}` : ""}`,
+          url: `${siteUrl()}/dashboard/inbox?status=NEW#inq-${q.id}`,
+          description: plain(q.message, 500),
+          color: COLORS.INQUIRY,
+          fields,
+        },
+        [],
+        undefined,
+        capMs,
+      ),
     capMs,
   );
 }

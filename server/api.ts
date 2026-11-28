@@ -62,15 +62,7 @@ import {
   slugify,
   today,
 } from "../shared/format";
-import {
-  ERR,
-  inquiryStatusOk,
-  OK,
-  projectStatusOk,
-  taskStatusOk,
-  type ErrCode,
-  type OkCode,
-} from "../shared/messages";
+import { ERR, inquiryStatusOk, OK, projectStatusOk, taskStatusOk, type ErrCode, type OkCode } from "../shared/messages";
 import {
   currentUser,
   endSession,
@@ -405,7 +397,9 @@ const byHealth = (a: ActiveProject, b: ActiveProject) => healthRank(a) - healthR
 const PRIORITY_RANK: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 /** Urutan "tugas saya": lewat deadline dulu, lalu deadline terdekat (tanpa deadline paling bawah), lalu prioritas */
 const byUrgency = (a: Task, b: Task) =>
-  Number(isLate(b)) - Number(isLate(a)) || byDue(a, b) || (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1);
+  Number(isLate(b)) - Number(isLate(a)) ||
+  byDue(a, b) ||
+  (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1);
 
 /** Urutan daftar proyek (stabil; tidak berubah karena sekadar diedit):
  * deadline (default) = berjalan dulu (lewat deadline paling atas), lalu deadline terdekat, lalu nama;
@@ -567,7 +561,10 @@ on("GET", "/api/dashboard", async (c) => {
     onHoldTasks: openTasks(allTasks).filter((t) => onHold.has(t.projectId)).length,
     doneWithoutPortfolio: allProjects.filter((p) => p.status === "DONE" && !linked.has(p.id)).length,
     newInquiries: newOnes.length,
-    oldestNewInquiryAt: newOnes.reduce<string | null>((min, q) => (!min || q.createdAt < min ? q.createdAt : min), null),
+    oldestNewInquiryAt: newOnes.reduce<string | null>(
+      (min, q) => (!min || q.createdAt < min ? q.createdAt : min),
+      null,
+    ),
     myOpenTasks: mine.length,
     myOverdue: mine.filter(isLate).length,
     myDueThisWeek: mine.filter((t) => isDueWithin(t.dueDate, 7)).length,
@@ -596,7 +593,9 @@ on("GET", "/api/projects", async (c) => {
   const q = (sp.get("q") ?? "").toLowerCase();
   // pf=belum: hanya proyek yang belum punya karya portofolio
   const noPortfolio = sp.get("pf") === "belum";
-  const sort = (PROJECT_SORTS as readonly string[]).includes(sp.get("sort") ?? "") ? (sp.get("sort") as ProjectSort) : "deadline";
+  const sort = (PROJECT_SORTS as readonly string[]).includes(sp.get("sort") ?? "")
+    ? (sp.get("sort") as ProjectSort)
+    : "deadline";
   const [allProjects, allTasks, allUsers, allPortfolio] = await Promise.all([
     projects.list(),
     tasks.list(),
@@ -633,7 +632,11 @@ on("POST", "/api/projects", async (c) => {
   // dibuat dari inquiry (Inbox → "Jadikan proyek"): tandai inquiry-nya Jadi proyek
   const inq = f.get("inquiryId") ? await inquiries.get(f.get("inquiryId")) : null;
   if (inq) await inquiries.setStatus(inq.id, "WON");
-  return done(c, { ok: inq ? "project-created-from-inquiry" : "project-created", to: `${PAGES.projects}/${id}`, data: { id } });
+  return done(c, {
+    ok: inq ? "project-created-from-inquiry" : "project-created",
+    to: `${PAGES.projects}/${id}`,
+    data: { id },
+  });
 });
 
 on("GET", "/api/projects/:id", async (c) => {
@@ -1211,7 +1214,8 @@ async function route(req: Request, url: URL, ip: string): Promise<Response> {
     let code: ErrCode = e instanceof HttpError ? e.code : "server-error";
     if (status === 500) console.error("[api]", req.method, url.pathname, e);
     // sesi berakhir: cookie ada tapi tidak berlaku lagi (kedaluwarsa, password direset, keluar di tab lain)
-    if (status === 401 && hasSessionCookie(req)) code = req.method === "GET" ? "session-expired" : "session-expired-draft";
+    if (status === 401 && hasSessionCookie(req))
+      code = req.method === "GET" ? "session-expired" : "session-expired-draft";
     if (wantsJson(req) || req.method === "GET") return json({ ok: false, error: ERR[code], code }, status);
     const f = await c.body().catch(() => undefined);
     if (status === 401) {

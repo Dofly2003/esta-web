@@ -90,7 +90,10 @@ export const isLate = (x: HasStatus & { dueDate: string | null }) => isOverdue(x
  * Tugas "hidup": belum selesai DAN proyeknya masih berjalan (ACTIVE_PROJECT_STATUSES).
  * Dasar semua hitungan terbuka / lewat deadline / beban kerja, supaya tugas di proyek Selesai/Ditunda tidak ikut.
  */
-export function liveTasks<T extends HasStatus & { projectId: string }>(list: T[], projects: (HasStatus & { id: string })[]) {
+export function liveTasks<T extends HasStatus & { projectId: string }>(
+  list: T[],
+  projects: (HasStatus & { id: string })[],
+) {
   const active = new Set(projects.filter(isActiveProject).map((p) => p.id));
   return list.filter((t) => !isDone(t) && active.has(t.projectId));
 }
@@ -168,7 +171,10 @@ export function cutText(s: string, max: number) {
 /** Nilai rupiah bulat dari input: "15000000", "15.000.000", "Rp 15.000.000".
  * null bila kosong; "invalid" untuk desimal/koma ("1.500.000,50"), satuan ("1.5 juta") atau titik yang salah. */
 export function parseRupiah(v: string): number | null | "invalid" {
-  const s = v.trim().replace(/^rp\.?/i, "").replace(/\s+/g, "");
+  const s = v
+    .trim()
+    .replace(/^rp\.?/i, "")
+    .replace(/\s+/g, "");
   if (!s) return null;
   if (!/^\d+$/.test(s) && !/^\d{1,3}(\.\d{3})+$/.test(s)) return "invalid";
   const digits = s.replace(/\./g, "");

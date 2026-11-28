@@ -98,9 +98,7 @@ html[data-dash] {
   --dur-drawer: 220ms;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --tr-colors:
-    background-color var(--dur) var(--ease),
-    color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+    background-color var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
   /* lapisan */
   --z-top: 30;
   --z-backdrop: 39;
@@ -2563,7 +2561,23 @@ html[data-dash] :is(.ell, .me-name, .stat-label) {
     }
   }
   @media (forced-colors: active) {
-    [data-dash] :is(.btn, .btn-primary, .btn-danger, .btn-icon, .seg, .input, .panel, .list, .stats, .tbl-wrap, .proj, .notice, .tcard, .pop-panel) {
+    [data-dash]
+      :is(
+        .btn,
+        .btn-primary,
+        .btn-danger,
+        .btn-icon,
+        .seg,
+        .input,
+        .panel,
+        .list,
+        .stats,
+        .tbl-wrap,
+        .proj,
+        .notice,
+        .tcard,
+        .pop-panel
+      ) {
       border: 1px solid CanvasText;
     }
     [data-dash] .nav-item[aria-current="page"],
@@ -2737,7 +2751,24 @@ html[data-dash] :is(.ell, .me-name, .stat-label) {
     margin-bottom: 0;
   }
   /* teks bebas panjang tanpa spasi tidak boleh melebarkan halaman */
-  [data-dash] :is(.h1, .h2, .answer, .desc, .task-title, .tcard p, .tcard .cap, .task-main .cap, .trow-title, .trow .meta, .proj-name, .inq-msg, .notice > span, .empty > p, .pf-status .cap) {
+  [data-dash]
+    :is(
+      .h1,
+      .h2,
+      .answer,
+      .desc,
+      .task-title,
+      .tcard p,
+      .tcard .cap,
+      .task-main .cap,
+      .trow-title,
+      .trow .meta,
+      .proj-name,
+      .inq-msg,
+      .notice > span,
+      .empty > p,
+      .pf-status .cap
+    ) {
     overflow-wrap: anywhere;
   }
 

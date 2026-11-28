@@ -2,7 +2,14 @@
 // Kode yang tidak dikenal tidak ditampilkan (teks bebas di URL tidak pernah dirender → tidak bisa dipakai pesan palsu).
 // Respons JSON (Accept: application/json) tetap berisi teksnya di `message` / `error`, plus `code`.
 // Istilah: halaman "Inbox", satu pesan masuk = "inquiry"; "deadline"; "Peran"; "Ubah".
-import { INQUIRY_STATUS_ALL, MAX_FEATURED, MAX_TASK_LINES, MIN_PASSWORD, PROJECT_STATUS, TASK_STATUS } from "./constants";
+import {
+  INQUIRY_STATUS_ALL,
+  MAX_FEATURED,
+  MAX_TASK_LINES,
+  MIN_PASSWORD,
+  PROJECT_STATUS,
+  TASK_STATUS,
+} from "./constants";
 
 const taskStatus = (k: string) => `Status tugas: ${TASK_STATUS[k]!.label}.`;
 const inquiryStatus = (k: string) => `Inquiry ditandai ${INQUIRY_STATUS_ALL[k]!.label}.`;
@@ -159,10 +166,12 @@ export function readFlash(url: URL) {
 
 /** "IN_PROGRESS" → "in-progress" */
 const codePart = (key: string) => key.toLowerCase().replace(/_/g, "-");
-const statusOk = (prefix: string, fallback: OkCode) => (status: string): OkCode => {
-  const code = `${prefix}-${codePart(status)}`;
-  return Object.hasOwn(OK, code) ? (code as OkCode) : fallback;
-};
+const statusOk =
+  (prefix: string, fallback: OkCode) =>
+  (status: string): OkCode => {
+    const code = `${prefix}-${codePart(status)}`;
+    return Object.hasOwn(OK, code) ? (code as OkCode) : fallback;
+  };
 
 /** Kode flash untuk status tugas baru (kode umum bila status tidak dikenal) */
 export const taskStatusOk = statusOk("task-status", "task-status");
